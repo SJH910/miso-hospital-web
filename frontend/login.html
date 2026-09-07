@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 로그인</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <a href="board.html">진료문의 게시판</a>
+            <a href="signup.html">회원가입</a>
+        </nav>
+    </header>
+
+    <section class="login-section">
+        <div class="login-card">
+            <h2>미소병원 의료 시스템</h2>
+            <p>환자 및 의료진 전용 로그인</p>
+
+            <form id="loginForm">
+                <div class="input-group">
+                    <label for="userid">아이디</label>
+                    <input type="text" id="userid" name="userid" placeholder="아이디를 입력하세요">
+                </div>
+                <div class="input-group">
+                    <label for="password">비밀번호</label>
+                    <input type="password" id="password" name="password" placeholder="비밀번호를 입력하세요">
+                </div>
+                <button type="submit" class="btn-primary">로그인</button>
+            </form>
+            <p style="margin-top:16px;">
+                <a href="signup.html">회원가입</a>
+            </p>
+        </div>
+    </section>
+
+    <footer class="site-footer">
+        <span><strong>미소병원</strong> 환자 의료정보 시스템</span>
+        <span>&copy; 2026 미소병원</span>
+    </footer>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/login.js"></script>
+</body>
+</html>

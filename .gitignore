@@ -1,0 +1,13 @@
+node_modules/
+.DS_Store
+.env
+*.log
+.run/
+__pycache__/
+*.pyc
+secret.key
+chatbot_logs.db
+.claude/settings.local.json
+
+# tesseract.js가 첫 실행 시 자동으로 내려받는 OCR 언어 데이터 (was/routes/ocr.js) — 소스가 아닌 런타임 캐시
+was/*.traineddata
