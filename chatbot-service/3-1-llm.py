@@ -18,8 +18,8 @@ load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
 # 답변 생성 모델
-# 기본 폴백(Fallback) 모델을 서비스가 종료된 "gemini-2.0-flash"에서 최신 "gemini-2.5-flash"로 변경
-CHAT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# 기본 폴백(Fallback) 모델을 서비스가 종료된 "gemini-2.0-flash"에서 최신 "gemini-3.6-flash"로 변경
+CHAT_MODEL = "gemini-3.6-flash"
 
 # RAG 답변 생성 시 넣는 시스템 지시문
 SYSTEM_INSTRUCTION = (
@@ -33,15 +33,21 @@ SYSTEM_INSTRUCTION = (
 def require_gemini():
     """google.generativeai 로드 + API 키 설정."""
     if not API_KEY:
-        raise ValueError(
-            "GEMINI_API_KEY 가 필요합니다. "
-            ".env 파일에 GEMINI_API_KEY='your-key' 를 설정해주세요."
+        print(
+            "GEMINI_API_KEY 가 필요합니다.\n"
+            "  .env 파일에 GEMINI_API_KEY='your-key' 를 설정해주세요.",
+            file=sys.stderr,
         )
+        sys.exit(1)
         
     try:
         import google.generativeai as genai
     except ImportError:
-        raise ImportError("패키지 필요: pip install google-generativeai")
+        print(
+            "패키지 필요: pip install google-generativeai",
+            file=sys.stderr,
+        )
+        sys.exit(1)
         
     genai.configure(api_key=API_KEY)
     return genai
