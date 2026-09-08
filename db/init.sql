@@ -8,6 +8,7 @@ USE vulnapp;
 -- scanned_documents/board_posts가 patients를 외래키로 참조하고, role_permissions가 roles/permissions를
 -- 참조하므로 참조하는 쪽을 먼저 삭제.
 DROP TABLE IF EXISTS chat_messages;
+DROP TABLE IF EXISTS holidays;
 DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS medical_records;
 DROP TABLE IF EXISTS reservations;
@@ -71,14 +72,16 @@ INSERT INTO permissions (name) VALUES
     ('records:view:masked'),
     ('records:view:full'),
     ('records:write'),
-    ('audit:view');
+    ('audit:view'),
+    ('holidays:manage');
 
 -- admin: 문서 스캔(OCR)·계정 관리·예약 관리·문의 답변·환자 등록·진료기록 전체·감사 로그.
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r, permissions p
 WHERE r.name = 'admin' AND p.name IN (
     'ocr:scan', 'documents:create', 'documents:view', 'patients:view', 'accounts:manage',
-    'reservations:manage', 'board:reply', 'patients:register', 'records:view:full', 'records:write', 'audit:view'
+    'reservations:manage', 'board:reply', 'patients:register', 'records:view:full', 'records:write', 'audit:view',
+    'holidays:manage'
 );
 
 -- 게시판(진료문의) 권한은 patient/admin 둘 다 부여 (RBAC-Plan.md "역할별 권한 매핑" 참고).
@@ -120,6 +123,33 @@ CREATE TABLE reservations (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (patient_id) REFERENCES patients(id)
 );
+
+-- 휴진일 (공공 공휴일 + 병원 자체 휴진일 통합 관리).
+-- 외부 공휴일 API를 쓰지 않는 이유: 그 서비스가 장애/요청제한에 걸리면 예약 가능 여부 판단
+-- 자체가 막혀버리기 때문 (이 프로젝트 전반의 "외부 의존성 장애가 핵심 기능을 막으면 안 된다" 원칙과
+-- 동일). 관리자가 holidays:manage 권한으로 등록/삭제하며, 아래는 2026년 초기 시드 데이터.
+CREATE TABLE holidays (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    holiday_date DATE NOT NULL UNIQUE,
+    reason VARCHAR(100) NOT NULL
+);
+
+INSERT INTO holidays (holiday_date, reason) VALUES
+    ('2026-01-01', '신정'),
+    ('2026-02-16', '설날 연휴'),
+    ('2026-02-17', '설날'),
+    ('2026-02-18', '설날 연휴'),
+    ('2026-03-01', '삼일절'),
+    ('2026-05-05', '어린이날'),
+    ('2026-05-24', '부처님오신날'),
+    ('2026-06-06', '현충일'),
+    ('2026-08-15', '광복절'),
+    ('2026-09-24', '추석 연휴'),
+    ('2026-09-25', '추석'),
+    ('2026-09-26', '추석 연휴'),
+    ('2026-10-03', '개천절'),
+    ('2026-10-09', '한글날'),
+    ('2026-12-25', '크리스마스');
 
 -- 진료기록(의료 차트). admin만 작성, patient는 본인 것만/staff는 마스킹해서 열람 (RBAC-Plan.md "4~5단계" 참고)
 CREATE TABLE medical_records (

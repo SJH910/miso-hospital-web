@@ -12,6 +12,7 @@ const reservationsRoutes = require("./routes/reservations");
 const recordsRoutes = require("./routes/records");
 const auditLogRoutes = require("./routes/auditLog");
 const chatRoutes = require("./routes/chat");
+const holidaysRoutes = require("./routes/holidays");
 
 const app = express();
 
@@ -53,6 +54,7 @@ app.use("/api/reservations", reservationsRoutes);
 app.use("/api/records", recordsRoutes);
 app.use("/api/audit-log", auditLogRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/holidays", holidaysRoutes);
 
 // 안전망: 라우트에서 놓친 에러가 있어도 서버 프로세스 자체는 죽지 않고 500만 응답하게 함.
 // [보안 강화 #7-b 정보 노출] 에러 상세는 서버 로그에만 남기고 클라이언트에는 일반 메시지만 반환.

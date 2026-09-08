@@ -30,6 +30,17 @@ def get_connection():
     )
 
 
+def is_holiday(date_str: str) -> bool:
+    """date_str: 'YYYY-MM-DD'. holidays 테이블(공휴일+병원 자체 휴진일)에 등록되어 있는지 확인.
+    was/routes/holidays.js와 같은 테이블을 참조하므로, 관리자가 등록/삭제하면 양쪽 다 즉시 반영된다."""
+    conn = get_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT 1 FROM holidays WHERE holiday_date = %s", (date_str,))
+        row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+
 def book_appointment(patient_id: int, date_str: str, department: str) -> str:
     """환자의 진료를 예약합니다. date_str은 'YYYY-MM-DD HH:MM:SS' 형식이어야 합니다.
     reservations 테이블에 저장하며, status는 테이블 기본값(requested)을 그대로 사용한다
