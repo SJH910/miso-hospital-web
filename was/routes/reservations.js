@@ -41,6 +41,8 @@ router.get("/", requireReservationView, async (req, res) => {
   return res.status(403).json({ message: "권한이 없습니다." });
 });
 
+const MAX_RESERVATIONS_PER_SLOT = 2;
+
 router.post("/", verifyCsrfToken, requirePermission("reservations:create"), async (req, res) => {
   const { department, reserved_at } = req.body;
   if (!department || typeof department !== "string" || department.length > 50) {
@@ -49,6 +51,15 @@ router.post("/", verifyCsrfToken, requirePermission("reservations:create"), asyn
   const reservedAt = new Date(reserved_at);
   if (Number.isNaN(reservedAt.getTime())) {
     return res.status(400).json({ message: "예약 일시를 확인해주세요." });
+  }
+
+  // 같은 시간대(reserved_at)에 취소되지 않은 예약이 이미 정원(2명)만큼 있으면 거부.
+  const [[{ count }]] = await pool.query(
+    "SELECT COUNT(*) AS count FROM reservations WHERE reserved_at = ? AND status != 'cancelled'",
+    [reservedAt]
+  );
+  if (count >= MAX_RESERVATIONS_PER_SLOT) {
+    return res.status(409).json({ message: "해당 시간대는 예약이 마감되었습니다." });
   }
 
   // patient_id는 body가 아니라 세션에서만 가져온다 (IDOR 방지 — 다른 환자 명의로 예약 생성 불가).
