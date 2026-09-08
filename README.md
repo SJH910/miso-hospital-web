@@ -158,6 +158,30 @@ router.get("/", requirePermission("documents:view"), ...);
 
 ---
 
+## 챗봇 서비스 보안 강화 및 파이프라인 통합 (2026-09-08)
+
+오늘 진행된 챗봇 모듈(`chatbot-service`) 통합 과정에서 적용된 주요 보안 강화 및 버그 수정 사항입니다.
+
+### 작업 내용 요약
+
+- **감사 로그(Audit Log) 데코레이터 전면 적용**:
+  - 기존에 데모용으로 남아 사용되지 않던 `audit_decorator.py`의 `audit_log`를 `hospital_agent.py` 내의 모든 핵심 도구 함수(`tool_rag`, `tool_direct_answer`, `tool_book_appointment`, `tool_check_appointments`, `tool_check_medical_records`, `tool_list_documents`)에 일괄 적용했습니다.
+  - **결과**: 챗봇이 수행하는 모든 주요 동작이 비동기적으로 PII 마스킹, KMS 암호화, 무결성 해시 체이닝을 거쳐 `audit-logs/audit_log.jsonl`에 안전하게 기록됩니다.
+  - 추가로, 각 도구의 성격에 맞게 식별자(Action Name)를 명시적으로 부여하여 추후 로그 분석이 용이하도록 개선했습니다.
+
+- **FastAPI 서버 크래시(Crash) 취약점 수정**:
+  - `3-1-llm.py` 및 `2-embeddings.py` 내의 `require_gemini()` 함수에서 API 키가 누락되었거나 필수 패키지가 없을 때 `sys.exit(1)`을 호출하도록 하드코딩되어 있던 치명적인 문제를 발견했습니다.
+  - **수정사항**: `sys.exit(1)` 로직을 `raise ValueError` 및 `raise ImportError` 형태의 예외 처리(Exception)로 교체했습니다.
+  - **결과**: 환경변수 설정 누락 시 웹 서버(FastAPI) 전체 프로세스가 강제로 다운되는 현상을 방지하고, 에러를 안전하게 캐치하여 서버의 안정성을 대폭 향상시켰습니다.
+
+### 확인된 추가 보안/구조적 보완점 (추후 과제)
+- `app.py` 단의 SQLite 암호화 로그와 `audit_decorator.py`의 JSONL 로그가 중복 동작하는 파편화 현상이 존재하므로 통합이 필요합니다.
+- `slowapi`를 이용한 Rate Limiting이 프록시 환경에서 클라이언트 IP가 아닌 서버 IP로 고정될 우려가 있어 우회 방지 검토가 필요합니다.
+- 자연어 파싱(`tool_book_appointment`) 시 악의적인 특수문자 조합으로 인한 정규표현식(Regex) 과부하(ReDoS) 공격 방어 로직 추가가 고려되어야 합니다.
+
+---
+
+
 ## 확정 필요 / 확인 필요 사항 (2026-09-04 기준)
 
 
