@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 내 진료기록</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <span class="user-chip" id="userInfo"></span>
+            <button type="button" class="btn-logout" id="logoutBtn">로그아웃</button>
+        </nav>
+    </header>
+
+    <div class="page-header">
+        <p class="breadcrumb"><a href="index.html">홈</a> &gt; <a href="board.html">진료문의 게시판</a> &gt; 내 진료기록</p>
+        <h1>내 진료기록</h1>
+    </div>
+
+    <div class="page-body">
+        <!-- 의료진이 직접 작성한 진단/처방 기록 (medical_records 테이블) -->
+        <section class="panel">
+            <h2>진료 기록</h2>
+            <table class="board-table">
+                <thead>
+                    <tr><th>날짜</th><th>진단</th><th>처방</th></tr>
+                </thead>
+                <tbody id="medicalRecordList"></tbody>
+            </table>
+            <p id="medicalRecordEmpty" hidden>등록된 진료 기록이 없습니다.</p>
+        </section>
+
+        <!-- 관리자가 OCR로 스캔해 저장한 문서 (scanned_documents 테이블) -->
+        <section class="panel list-section">
+            <h2>스캔 문서 (처방전 / 진단서 / 영수증)</h2>
+            <table class="board-table">
+                <thead>
+                    <tr><th>종류</th><th>날짜</th><th>금액</th></tr>
+                </thead>
+                <tbody id="recordList"></tbody>
+            </table>
+            <p id="emptyState" hidden>아직 등록된 스캔 문서가 없습니다.</p>
+        </section>
+
+        <!-- 상세 보기 영역. 스캔 문서 목록에서 행을 클릭하면 여기에 원문이 채워짐 -->
+        <section class="panel record-detail" id="recordDetail" hidden></section>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/records.js"></script>
+</body>
+</html>

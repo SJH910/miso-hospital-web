@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 문서 스캔 (관리자)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="board-container">
+        <header>
+            <h2>문서 스캔 (OCR)</h2>
+            <span class="user-info" id="userInfo"></span>
+        </header>
+
+        <section class="write-section">
+            <h3>진단서 / 처방전 / 영수증 이미지 업로드</h3>
+            <div class="input-group">
+                <label for="scanImage">이미지 파일 (JPEG/PNG/WEBP, 5MB 이하)</label>
+                <input type="file" id="scanImage" accept="image/png,image/jpeg,image/webp">
+            </div>
+            <button type="button" id="scanButton" class="btn-primary">텍스트 추출</button>
+            <p id="scanStatus"></p>
+            <div class="input-group">
+                <label>인식 결과 미리보기 (OCR이 잘못 읽었을 수 있으니 아래 텍스트와 대조해보세요)</label>
+                <div id="confidencePreview" class="ocr-preview">이미지를 추출하면 여기에 표시됩니다.</div>
+            </div>
+            <div class="input-group">
+                <label for="resultText">추출된 텍스트 (저장 전 확인/수정 가능)</label>
+                <textarea id="resultText" rows="10" placeholder="추출 결과가 여기에 표시됩니다."></textarea>
+            </div>
+            <div class="input-group">
+                <label for="patientSelect">연결할 환자</label>
+                <select id="patientSelect">
+                    <option value="">환자를 선택하세요</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="documentTypeSelect">문서 종류</label>
+                <select id="documentTypeSelect">
+                    <option value="">문서 종류를 선택하세요</option>
+                    <option value="prescription">처방전</option>
+                    <option value="diagnosis">진단서</option>
+                    <option value="receipt">영수증</option>
+                </select>
+            </div>
+            <button type="button" id="saveButton" class="btn-primary">저장</button>
+            <p id="saveStatus"></p>
+        </section>
+
+        <section class="list-section">
+            <h3>저장된 스캔 문서</h3>
+            <ul id="documentList"></ul>
+        </section>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

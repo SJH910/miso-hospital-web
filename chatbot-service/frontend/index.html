@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 환자 의료정보 시스템</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+    <header class="site-header">
+        <div class="brand">
+            <span class="brand-mark">+</span>
+            미소병원
+        </div>
+        <nav class="main-nav" id="mainNav">
+            <a href="board.html">진료문의 게시판</a>
+            <a href="admin.html" id="navAdminLink" style="display:none;">문서 스캔</a>
+            <a href="signup.html" id="navSignupLink">회원가입</a>
+            <a href="login.html" class="nav-cta" id="navLoginBtn">로그인</a>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <div class="hero-text">
+            <span class="hero-badge">환자 중심 온라인 의료정보 시스템</span>
+            <h1>내 증상 남기고,<br>안전하게 진료로 이어지도록</h1>
+            <p>미소병원 환자 포털에서 회원가입 후 로그인하면 증상을 남기고 진료문의 내역을 확인할 수 있습니다.
+                세션 기반 로그인과 CSRF 보호로 개인정보를 안전하게 지킵니다.</p>
+            <div class="hero-actions" id="heroActions">
+                <a href="login.html" class="btn-hero-primary" id="heroLoginBtn">로그인하기</a>
+                <a href="signup.html" class="btn-hero-secondary" id="heroSignupBtn">회원가입</a>
+            </div>
+        </div>
+        <div class="hero-visual">
+            <div class="hero-visual-item">
+                <span class="hero-visual-icon">🔐</span>
+                <div>
+                    <strong>세션 기반 로그인</strong>
+                    <span>로그인 시 발급되는 CSRF 토큰으로 요청을 보호합니다</span>
+                </div>
+            </div>
+            <div class="hero-visual-item">
+                <span class="hero-visual-icon">📝</span>
+                <div>
+                    <strong>진료문의 게시판</strong>
+                    <span>증상을 남기고 나의 문의 내역을 확인하세요</span>
+                </div>
+            </div>
+            <div class="hero-visual-item">
+                <span class="hero-visual-icon">📄</span>
+                <div>
+                    <strong>문서 스캔(OCR)</strong>
+                    <span>진단서·처방전 이미지를 텍스트로 자동 인식 (관리자 전용)</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="quicklinks">
+        <a href="login.html" class="quicklink-card" id="quicklinkLogin">
+            <span class="quicklink-icon">🔑</span>
+            <span>
+                <strong id="quicklinkLoginTitle">로그인</strong>
+                <span id="quicklinkLoginDesc">환자·의료진 계정으로 로그인</span>
+            </span>
+        </a>
+        <a href="signup.html" class="quicklink-card" id="quicklinkSignup">
+            <span class="quicklink-icon">👤</span>
+            <span>
+                <strong id="quicklinkSignupTitle">회원가입</strong>
+                <span id="quicklinkSignupDesc">환자 정보를 등록하고 시작하기</span>
+            </span>
+        </a>
+        <a href="board.html" class="quicklink-card">
+            <span class="quicklink-icon">💬</span>
+            <span>
+                <strong>진료문의 게시판</strong>
+                <span>증상 남기고 문의 내역 확인</span>
+            </span>
+        </a>
+    </div>
+
+    <section class="features">
+        <div class="section-eyebrow">SYSTEM</div>
+        <h2 class="section-title">미소병원 환자 포털이 제공하는 기능</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3>온라인 진료문의</h3>
+                <p>회원가입 후 로그인하면 증상을 등록하고, 내가 남긴 문의 내역을 언제든 다시 확인할 수 있습니다.</p>
+            </div>
+            <div class="feature-card">
+                <h3>보안 강화 로그인</h3>
+                <p>세션 쿠키와 로그인 시 발급되는 CSRF 토큰으로 로그인 상태와 요청을 안전하게 보호합니다.</p>
+            </div>
+            <div class="feature-card">
+                <h3>문서 자동 인식(OCR)</h3>
+                <p>관리자는 진단서·처방전·영수증 이미지를 업로드해 텍스트를 자동 추출하고 환자 기록에 연결할 수 있습니다.</p>
+            </div>
+        </div>
+    </section>
+
+    <footer class="site-footer">
+        <span><strong>미소병원</strong> 환자 의료정보 시스템</span>
+        <span>&copy; 2026 미소병원</span>
+    </footer>
+
+    <!-- 챗봇 플로팅 버튼/창. board.html과 동일 위젯 - 홈 화면에서도 상담 가능하도록 -->
+    <div id="chatWidget" style="display:none;">
+        <button id="chatToggleBtn" class="chat-toggle-btn" aria-label="상담 챗봇 열기">💬</button>
+        <div id="chatPanel" class="chat-panel" style="display:none;">
+            <div class="chat-panel__header">미소병원 상담 챗봇</div>
+            <div id="chatMessages" class="chat-panel__messages"></div>
+            <form id="chatForm" class="chat-panel__form">
+                <input type="text" id="chatInput" placeholder="궁금한 점을 입력해주세요" autocomplete="off">
+                <button type="submit" class="btn-primary" style="width:auto; padding:8px 14px;">전송</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/home.js"></script>
+    <script src="js/chat-widget.js"></script>
+</body>
+</html>

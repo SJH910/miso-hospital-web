@@ -1,0 +1,21 @@
+{
+  "name": "miso-hospital-was-secure",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mysql2": "^3.11.0",
+    "cors": "^2.8.5",
+    "express-session": "^1.18.0",
+    "bcrypt": "^5.1.1",
+    "express-rate-limit": "^7.4.0",
+    "sanitize-html": "^2.13.0",
+    "multer": "^2.3.0",
+    "tesseract.js": "^7.0.0"
+  }
+}

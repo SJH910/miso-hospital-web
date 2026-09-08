@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 진료 문의</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <a href="admin.html" id="adminLink" style="display:none;">문서 스캔 페이지로 이동</a>
+            <a href="records.html" id="recordsLink" style="display:none;">내 진료기록</a>
+            <span class="user-chip" id="userInfo"></span>
+            <button type="button" class="btn-logout" id="logoutBtn">로그아웃</button>
+        </nav>
+    </header>
+
+    <div class="page-header">
+        <p class="breadcrumb"><a href="index.html">홈</a> &gt; 진료문의 게시판</p>
+        <h1>진료문의 게시판</h1>
+    </div>
+
+    <div class="page-body">
+        <section class="panel write-section">
+            <h3>증상 남기기</h3>
+            <form id="inquiryForm">
+                <div class="input-group">
+                    <label for="title">제목</label>
+                    <input type="text" id="title" placeholder="어디가 불편하신가요?">
+                </div>
+                <div class="input-group">
+                    <label for="content">상세 증상</label>
+                    <textarea id="content" rows="4" placeholder="증상을 상세히 적어주세요."></textarea>
+                </div>
+                <button type="submit" class="btn-primary">문의 등록</button>
+            </form>
+        </section>
+
+        <section class="panel list-section">
+            <h3>나의 문의 내역</h3>
+            <div class="board-toolbar">
+                <input type="text" id="searchInput" placeholder="제목으로 검색">
+            </div>
+            <table class="board-table">
+                <thead>
+                    <tr>
+                        <th class="col-num">번호</th>
+                        <th>제목</th>
+                        <th class="col-date">작성일</th>
+                    </tr>
+                </thead>
+                <tbody id="inquiryList"></tbody>
+            </table>
+            <p class="empty-state" id="emptyState" hidden>등록된 문의가 없습니다.</p>
+        </section>
+    </div>
+
+    <footer class="site-footer">
+        <span><strong>미소병원</strong> 환자 의료정보 시스템</span>
+        <span>&copy; 2026 미소병원</span>
+    </footer>
+
+    <!-- 챗봇 플로팅 버튼/창. 환자에게만 노출 (board.js가 role 확인 후 켬) -->
+    <div id="chatWidget" style="display:none;">
+        <button id="chatToggleBtn" class="chat-toggle-btn" aria-label="상담 챗봇 열기">💬</button>
+        <div id="chatPanel" class="chat-panel" style="display:none;">
+            <div class="chat-panel__header">미소병원 상담 챗봇</div>
+            <div id="chatMessages" class="chat-panel__messages"></div>
+            <form id="chatForm" class="chat-panel__form">
+                <input type="text" id="chatInput" placeholder="궁금한 점을 입력해주세요" autocomplete="off">
+                <button type="submit" class="btn-primary" style="width:auto; padding:8px 14px;">전송</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/board.js"></script>
+    <script src="js/chat-widget.js"></script>
+</body>
+</html>

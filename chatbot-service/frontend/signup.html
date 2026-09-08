@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 회원가입</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <h2>회원가입</h2>
+        <p>환자 정보를 입력해주세요</p>
+
+        <form id="signupForm">
+            <div class="input-group">
+                <label for="username">아이디</label>
+                <input type="text" id="username" placeholder="아이디를 입력하세요">
+            </div>
+            <div class="input-group">
+                <label for="password">비밀번호</label>
+                <input type="password" id="password" placeholder="비밀번호를 입력하세요">
+            </div>
+            <div class="input-group">
+                <label for="name">이름</label>
+                <input type="text" id="name" placeholder="이름을 입력하세요">
+            </div>
+            <div class="input-group">
+                <label for="rrn">주민등록번호</label>
+                <input type="text" id="rrn" placeholder="990101-1234567">
+            </div>
+            <button type="submit" class="btn-primary">가입하기</button>
+        </form>
+        <p style="margin-top:16px;"><a href="login.html">로그인으로 돌아가기</a></p>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/signup.js"></script>
+</body>
+</html>
