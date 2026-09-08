@@ -73,8 +73,11 @@ router.patch("/:id/answer", verifyCsrfToken, requirePermission("board:reply"), a
 
 // [보안 강화 #3 BOLA/IDOR] URL의 patientId가 세션 소유자와 일치하는지 반드시 검증.
 // 일치하지 않으면 403으로 즉시 차단 - "로그인 여부"만이 아니라 "이 리소스의 소유자인지"까지 확인.
+// 단, board:reply(staff/admin)는 GET "/" 목록에서도 전체 문의를 보므로, 상세조회도 동일하게
+// 본인 것이 아니어도 통과시킨다 (답변을 달려면 다른 환자의 문의도 상세히 봐야 하므로).
 router.get("/:patientId", requirePermission("board:read"), async (req, res) => {
-  if (Number(req.params.patientId) !== req.session.patientId) {
+  const canReply = await hasPermission(req.session.role, "board:reply");
+  if (!canReply && Number(req.params.patientId) !== req.session.patientId) {
     return res.status(403).json({ message: "접근 권한이 없습니다." });
   }
 
