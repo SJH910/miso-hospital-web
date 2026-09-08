@@ -27,7 +27,9 @@ async function applyLoggedInState(me) {
     const isAdmin = me.role === 'admin';
     if (isAdmin) {
         document.getElementById('navAdminLink').style.display = '';
+        document.getElementById('navHolidaysLink').style.display = '';
     } else {
+        document.getElementById('navReservationLink').style.display = '';
         document.getElementById('chatWidget').style.display = 'block';
     }
 
@@ -41,11 +43,13 @@ async function applyLoggedInState(me) {
         heroSignupBtn.textContent = '문서 스캔 페이지로 이동';
         heroSignupBtn.href = 'admin.html';
     } else {
-        heroSignupBtn.remove();
+        // 로그아웃 상태에서 "회원가입" 버튼이던 자리를 환자에게는 "진료 예약하기"로 재활용
+        heroSignupBtn.textContent = '진료 예약하기';
+        heroSignupBtn.href = 'reservation.html';
     }
 
-    // 퀵링크 카드: "로그인"은 문의 작성 바로가기로, "회원가입" 자리는 관리자만 문서 스캔으로 교체
-    // (기존 3번째 카드가 이미 "진료문의 게시판→내역 확인"이라, 여기서는 그것과 안 겹치게 "글쓰기"로 분리)
+    // 퀵링크 카드: "로그인"은 문의 작성 바로가기로, "회원가입" 자리는 관리자는 문서 스캔,
+    // 환자는 진료 예약으로 교체 (기존엔 환자일 때 이 카드를 통째로 지웠었음)
     document.getElementById('quicklinkLogin').href = 'board.html#inquiryForm';
     document.getElementById('quicklinkLoginTitle').textContent = '새 문의 작성';
     document.getElementById('quicklinkLoginDesc').textContent = '지금 바로 증상을 남겨보세요';
@@ -56,7 +60,9 @@ async function applyLoggedInState(me) {
         document.getElementById('quicklinkSignupTitle').textContent = '문서 스캔';
         document.getElementById('quicklinkSignupDesc').textContent = '진단서·처방전 이미지 텍스트 추출';
     } else {
-        quicklinkSignup.remove();
+        quicklinkSignup.href = 'reservation.html';
+        document.getElementById('quicklinkSignupTitle').textContent = '진료 예약';
+        document.getElementById('quicklinkSignupDesc').textContent = '챗봇과 대화하며 예약하기';
     }
 }
 
