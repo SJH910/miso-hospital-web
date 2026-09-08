@@ -53,7 +53,9 @@ async function loadUserInfo() {
     // 실제 접근 제어는 서버(각 admin 라우트의 requirePermission)가 담당 — 이건 UI 편의를 위한 것일 뿐.
     if (me.role === 'admin') {
         document.getElementById('adminLink').style.display = 'inline-block';
+        document.getElementById('holidaysLink').style.display = 'inline-block';
     } else {
+        document.getElementById('reservationLink').style.display = 'inline-block';
         document.getElementById('recordsLink').style.display = 'inline-block';
         document.getElementById('chatWidget').style.display = 'block';
     }
