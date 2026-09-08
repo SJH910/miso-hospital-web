@@ -15,6 +15,14 @@ const chatRoutes = require("./routes/chat");
 
 const app = express();
 
+// [안정성 강화] 라우트 코드에서 놓친 예외(예: 암호화 키 변경으로 인한 복호화 실패)가
+// 서버 프로세스 전체를 죽이지 않도록 하는 최후의 안전망. Node 15+ 기본 동작은
+// "처리되지 않은 Promise 거부 시 프로세스 종료"인데, 이 리스너를 달면 로그만 남기고 계속 실행된다.
+// (근본 수정은 각 라우트에 try/catch를 제대로 두는 것이고, 이건 그걸 놓쳤을 때의 2차 방어선일 뿐.)
+process.on("unhandledRejection", (err) => {
+  console.error("[unhandledRejection] 처리되지 않은 예외 발생 - 서버는 계속 실행됩니다:", err);
+});
+
 // [보안 강화 #5 CSRF/CORS] 신뢰하는 프론트엔드 오리진만 명시적으로 허용.
 // origin: true(모든 오리진 반사) 대신 config.allowedOrigin 하나만 허용해
 // 공격자 페이지의 credentialed 요청 자체가 브라우저 단에서 차단되도록 함.

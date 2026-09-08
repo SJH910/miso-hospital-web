@@ -15,12 +15,22 @@ router.get("/history", async (req, res) => {
     "SELECT id, sender, content, created_at FROM chat_messages WHERE patient_id = ? ORDER BY id",
     [req.session.patientId]
   );
-  const masked = rows.map((row) => ({
-    id: row.id,
-    sender: row.sender,
-    content: maskPii(decryptText(row.content)),
-    created_at: row.created_at,
-  }));
+  // [안정성 강화] RRN_ENCRYPTION_KEY가 바뀌면 예전 키로 암호화된 메시지는 복호화가 실패한다.
+  // 메시지 하나 복호화 실패로 전체 요청(나아가 서버 전체)이 죽지 않도록, 실패한 메시지는
+  // 건너뛰고 나머지는 정상적으로 보여준다.
+  const masked = [];
+  for (const row of rows) {
+    try {
+      masked.push({
+        id: row.id,
+        sender: row.sender,
+        content: maskPii(decryptText(row.content)),
+        created_at: row.created_at,
+      });
+    } catch (err) {
+      console.error(`[chat history] 메시지 id=${row.id} 복호화 실패 (암호화 키 변경 가능성) - 건너뜀`);
+    }
+  }
   res.json(masked);
 });
 

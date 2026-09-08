@@ -194,8 +194,7 @@ def main() -> None:
         try:
             answer = run_rag(q, top_k=2)
         except Exception as exc:
-            print(f"[오류] {exc}", file=sys.stderr)
-            sys.exit(1)
+            raise RuntimeError(f"RAG 실행 중 오류 발생: {exc}") from exc
         print("--- 답변 ---")
         print(answer)
         print()

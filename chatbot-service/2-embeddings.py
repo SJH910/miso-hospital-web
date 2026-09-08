@@ -50,22 +50,14 @@ def _preview_embedding(vec: List[float], size: int = 8) -> str:
 def require_gemini():
     """google.generativeai 로드 + API 키 설정."""
     if not API_KEY:
-        print(
-            "GEMINI_API_KEY 가 필요합니다.\n"
-            "  export GEMINI_API_KEY='your-key'",
-            file=sys.stderr,
-            flush=True,
+        raise ValueError(
+            "GEMINI_API_KEY 가 필요합니다. "
+            "export GEMINI_API_KEY='your-key'"
         )
-        sys.exit(1)
     try:
         import google.generativeai as genai
     except ImportError:
-        print(
-            "패키지 필요: pip install google-generativeai",
-            file=sys.stderr,
-            flush=True,
-        )
-        sys.exit(1)
+        raise ImportError("패키지 필요: pip install google-generativeai")
     genai.configure(api_key=API_KEY)
     return genai
 
