@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 진료 예약</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <span class="user-chip" id="userInfo"></span>
+            <button type="button" class="btn-logout" id="logoutBtn">로그아웃</button>
+        </nav>
+    </header>
+
+    <div class="page-header">
+        <p class="breadcrumb"><a href="index.html">홈</a> &gt; 진료 예약</p>
+        <h1>진료 예약</h1>
+        <p style="color:#6b7785;">챗봇에게 원하시는 날짜·시간과 진료과를 말씀해주세요. 예: <em>"2026-09-10 14:00에 내과 예약해줘"</em></p>
+    </div>
+
+    <!-- 전체 화면이 대화창. 팝업(chat-widget)과 달리 열고 닫는 토글이 없이 항상 펼쳐진 상태 -->
+    <div class="reservation-chat">
+        <div id="chatMessages" class="reservation-chat__messages"></div>
+        <form id="chatForm" class="reservation-chat__form">
+            <input type="text" id="chatInput" placeholder="예: 2026-09-10 14:00에 내과 예약해줘" autocomplete="off">
+            <button type="submit" class="btn-primary" style="width:auto; padding:12px 20px;">전송</button>
+        </form>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/chat-common.js"></script>
+    <script src="js/reservation.js"></script>
+</body>
+</html>
