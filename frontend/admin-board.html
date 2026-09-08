@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 문의 답변</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <a href="admin-reservations.html">예약 관리</a>
+            <span class="user-chip" id="userInfo"></span>
+            <button type="button" class="btn-logout" id="logoutBtn">로그아웃</button>
+        </nav>
+    </header>
+
+    <div class="page-header">
+        <p class="breadcrumb"><a href="index.html">홈</a> &gt; 문의 답변</p>
+        <h1>진료문의 답변</h1>
+        <p style="color:#6b7785;">환자가 남긴 문의를 확인하고 답변을 등록할 수 있습니다.</p>
+    </div>
+
+    <div class="page-body">
+        <section class="panel list-section">
+            <h3>전체 문의 목록</h3>
+            <div id="inquiryList"></div>
+            <p class="empty-state" id="emptyState" hidden>등록된 문의가 없습니다.</p>
+        </section>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/admin-board.js"></script>
+</body>
+</html>

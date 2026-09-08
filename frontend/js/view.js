@@ -25,6 +25,13 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
     window.location.href = 'index.html';
 });
 
+function formatDate(isoString) {
+    if (!isoString) return '';
+    const d = new Date(isoString);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // [보안 강화 #2 XSS] innerHTML 조립 대신 DOM 요소를 만들어 textContent로 값 대입.
 function renderDetail(posts) {
     detail.innerHTML = '';
@@ -41,7 +48,25 @@ function renderDetail(posts) {
         const content = document.createElement('p');
         content.textContent = p.content;
 
-        wrapper.append(meta, title, content, document.createElement('hr'));
+        wrapper.append(meta, title, content);
+
+        if (p.answer) {
+            const answerBox = document.createElement('div');
+            answerBox.className = 'answer-box';
+
+            const label = document.createElement('p');
+            label.className = 'answer-box__label';
+            label.textContent = `병원 답변 (${formatDate(p.answered_at)})`;
+
+            const text = document.createElement('p');
+            text.className = 'answer-box__text';
+            text.textContent = p.answer;
+
+            answerBox.append(label, text);
+            wrapper.appendChild(answerBox);
+        }
+
+        wrapper.appendChild(document.createElement('hr'));
         detail.appendChild(wrapper);
     });
 }

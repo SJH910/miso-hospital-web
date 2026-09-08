@@ -702,6 +702,70 @@ body.landing-page {
     color: #333;
 }
 
+/* admin-board.html - 문의 답변 카드 목록 */
+.inquiry-card + .inquiry-card {
+    margin-top: 18px;
+}
+
+.inquiry-card__meta {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 0 0 6px;
+}
+
+.inquiry-card__content {
+    color: #333;
+    white-space: pre-wrap;
+}
+
+.inquiry-card__answered-label {
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: bold;
+    margin: 12px 0 4px;
+}
+
+.inquiry-card textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-sizing: border-box;
+    font-family: inherit;
+    resize: vertical;
+}
+
+/* board.html/view.html - 문의 답변 표시 */
+.answer-badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--mint-card);
+    color: var(--accent);
+}
+
+.answer-box {
+    margin-top: 14px;
+    padding: 14px 16px;
+    background: var(--mint);
+    border-radius: 10px;
+}
+
+.answer-box__label {
+    color: var(--accent);
+    font-weight: bold;
+    font-size: 13px;
+    margin: 0 0 6px;
+}
+
+.answer-box__text {
+    white-space: pre-wrap;
+    color: #333;
+    margin: 0;
+}
+
 /* 진료 예약 - 전체 화면 채팅 페이지 */
 .reservation-chat {
     max-width: 700px;

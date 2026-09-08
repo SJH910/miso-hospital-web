@@ -29,7 +29,15 @@ function renderPost(post, index) {
     dateTd.className = 'col-date';
     dateTd.textContent = formatDate(post.created_at);
 
-    tr.append(numTd, titleTd, dateTd);
+    const statusTd = document.createElement('td');
+    statusTd.className = 'col-date';
+    const badge = document.createElement('span');
+    badge.className = 'answer-badge';
+    badge.textContent = post.answer ? '답변완료' : '답변대기';
+    if (!post.answer) badge.style.cssText = 'background:#eef0f2; color:var(--text-muted);';
+    statusTd.appendChild(badge);
+
+    tr.append(numTd, titleTd, dateTd, statusTd);
     inquiryList.appendChild(tr);
 }
 
@@ -49,11 +57,18 @@ async function loadUserInfo() {
     setCsrfToken(me.csrfToken); // 새로고침 등으로 토큰이 없을 경우를 대비해 /api/me에서도 재확보
     document.getElementById('userInfo').textContent = `${me.name}님`;
 
-    // 관리자에게만 문서 스캔 페이지 이동 버튼 노출 (환자 화면에는 이 기능의 존재 자체를 드러내지 않음).
-    // 실제 접근 제어는 서버(각 admin 라우트의 requirePermission)가 담당 — 이건 UI 편의를 위한 것일 뿐.
+    // 역할별로 보이는 메뉴/영역이 다름 (환자 화면에는 관리자 기능의 존재 자체를 드러내지 않음).
+    // 실제 접근 제어는 서버(각 라우트의 requirePermission)가 담당 — 이건 UI 편의를 위한 것일 뿐.
     if (me.role === 'admin') {
         document.getElementById('adminLink').style.display = 'inline-block';
         document.getElementById('holidaysLink').style.display = 'inline-block';
+        document.getElementById('reservationManageLink').style.display = 'inline-block';
+        document.getElementById('boardAnswerLink').style.display = 'inline-block';
+    } else if (me.role === 'staff') {
+        // staff는 board:write/board:read 권한이 없어 이 페이지의 작성 폼·상세보기(view.html)를 쓸 수 없다.
+        // 전체 문의 조회·답변은 admin-board.html 전용 화면에서 처리하므로 그쪽으로 보낸다.
+        window.location.href = 'admin-board.html';
+        return;
     } else {
         document.getElementById('reservationLink').style.display = 'inline-block';
         document.getElementById('recordsLink').style.display = 'inline-block';

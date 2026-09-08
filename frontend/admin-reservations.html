@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 예약 관리</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <a href="admin-board.html">문의 답변</a>
+            <span class="user-chip" id="userInfo"></span>
+            <button type="button" class="btn-logout" id="logoutBtn">로그아웃</button>
+        </nav>
+    </header>
+
+    <div class="page-header">
+        <p class="breadcrumb"><a href="index.html">홈</a> &gt; 예약 관리</p>
+        <h1>예약 관리</h1>
+        <p style="color:#6b7785;">환자가 챗봇으로 신청한 예약 요청을 확인하고 승인·취소할 수 있습니다.</p>
+    </div>
+
+    <div class="page-body">
+        <section class="panel list-section">
+            <h3>예약 목록</h3>
+            <table class="board-table">
+                <thead>
+                    <tr>
+                        <th>환자</th>
+                        <th>진료과</th>
+                        <th>예약 일시</th>
+                        <th>상태</th>
+                        <th>처리</th>
+                    </tr>
+                </thead>
+                <tbody id="reservationList"></tbody>
+            </table>
+            <p class="empty-state" id="emptyState" hidden>예약 내역이 없습니다.</p>
+        </section>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/admin-reservations.js"></script>
+</body>
+</html>

@@ -16,6 +16,8 @@
         <nav class="main-nav">
             <a href="admin.html" id="adminLink" style="display:none;">문서 스캔 페이지로 이동</a>
             <a href="admin-holidays.html" id="holidaysLink" style="display:none;">휴진일 관리</a>
+            <a href="admin-reservations.html" id="reservationManageLink" style="display:none;">예약 관리</a>
+            <a href="admin-board.html" id="boardAnswerLink" style="display:none;">문의 답변</a>
             <a href="reservation.html" id="reservationLink" style="display:none;">진료 예약</a>
             <a href="records.html" id="recordsLink" style="display:none;">내 진료기록</a>
             <span class="user-chip" id="userInfo"></span>
@@ -29,7 +31,7 @@
     </div>
 
     <div class="page-body">
-        <section class="panel write-section">
+        <section class="panel write-section" id="writeSection">
             <h3>증상 남기기</h3>
             <form id="inquiryForm">
                 <div class="input-group">
@@ -45,7 +47,7 @@
         </section>
 
         <section class="panel list-section">
-            <h3>나의 문의 내역</h3>
+            <h3 id="listHeading">나의 문의 내역</h3>
             <div class="board-toolbar">
                 <input type="text" id="searchInput" placeholder="제목으로 검색">
             </div>
@@ -55,6 +57,7 @@
                         <th class="col-num">번호</th>
                         <th>제목</th>
                         <th class="col-date">작성일</th>
+                        <th class="col-date">답변 상태</th>
                     </tr>
                 </thead>
                 <tbody id="inquiryList"></tbody>

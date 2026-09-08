@@ -25,12 +25,40 @@ async function applyLoggedInState(me) {
     navLoginBtn.replaceWith(userChip, logoutBtn);
     document.getElementById('navSignupLink')?.remove();
     const isAdmin = me.role === 'admin';
+    const isStaff = me.role === 'staff';
     if (isAdmin) {
         document.getElementById('navAdminLink').style.display = '';
         document.getElementById('navHolidaysLink').style.display = '';
+        document.getElementById('navReservationManageLink').style.display = '';
+        document.getElementById('navBoardAnswerLink').style.display = '';
+    } else if (isStaff) {
+        document.getElementById('navReservationManageLink').style.display = '';
+        document.getElementById('navBoardAnswerLink').style.display = '';
     } else {
         document.getElementById('navReservationLink').style.display = '';
         document.getElementById('chatWidget').style.display = 'block';
+    }
+
+    // staff는 이 페이지가 다루는 "환자용 랜딩(문의 등록/히어로/퀵링크)"의 대상이 아니므로,
+    // 관리 화면으로 바로 안내하고 나머지(히어로/퀵링크 문구 교체)는 건드리지 않는다.
+    if (isStaff) {
+        const heroLoginBtn = document.getElementById('heroLoginBtn');
+        heroLoginBtn.textContent = '문의 답변으로 이동';
+        heroLoginBtn.href = 'admin-board.html';
+
+        const heroSignupBtn = document.getElementById('heroSignupBtn');
+        heroSignupBtn.textContent = '예약 관리로 이동';
+        heroSignupBtn.href = 'admin-reservations.html';
+
+        document.getElementById('quicklinkLogin').href = 'admin-board.html';
+        document.getElementById('quicklinkLoginTitle').textContent = '문의 답변';
+        document.getElementById('quicklinkLoginDesc').textContent = '환자 문의를 확인하고 답변하기';
+
+        const quicklinkSignup = document.getElementById('quicklinkSignup');
+        quicklinkSignup.href = 'admin-reservations.html';
+        document.getElementById('quicklinkSignupTitle').textContent = '예약 관리';
+        document.getElementById('quicklinkSignupDesc').textContent = '예약 요청을 확인하고 승인하기';
+        return;
     }
 
     // 히어로 버튼: 로그인/회원가입 대신 게시판(관리자는 문서 스캔도) 바로가기
