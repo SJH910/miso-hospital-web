@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 휴진일 관리 (관리자)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="board-container">
+        <header>
+            <h2>휴진일 관리</h2>
+            <nav class="main-nav" style="margin-right:auto; margin-left:16px;">
+                <a href="admin.html">문서 스캔으로 이동</a>
+            </nav>
+            <span class="user-info" id="userInfo"></span>
+        </header>
+
+        <section class="write-section">
+            <h3>휴진일 등록</h3>
+            <p style="color:#6b7785; font-size:14px;">
+                공휴일이나 병원 자체 휴진일(창립기념일 등)을 등록하면, 챗봇 예약과
+                예약 API 양쪽 모두에서 해당 날짜의 예약이 즉시 차단됩니다.
+            </p>
+            <div class="input-group">
+                <label for="holidayDate">날짜</label>
+                <input type="date" id="holidayDate">
+            </div>
+            <div class="input-group">
+                <label for="holidayReason">사유</label>
+                <input type="text" id="holidayReason" placeholder="예: 병원 창립기념일">
+            </div>
+            <button type="button" id="addHolidayButton" class="btn-primary">휴진일 등록</button>
+        </section>
+
+        <section class="list-section">
+            <h3>등록된 휴진일 목록</h3>
+            <ul id="holidayList"></ul>
+        </section>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/admin-holidays.js"></script>
+</body>
+</html>
