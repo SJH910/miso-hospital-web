@@ -14,15 +14,28 @@ newpatient1	newpass123	patient
 
 ## 실행 방법
 
+### 최초 1회 (의존성 설치 + 더미 데이터 생성)
+
 ```bash
 cd was
 npm install
 node seed.js      # 더미 계정/게시글 생성 (비밀번호 해시·주민번호 암호화·역할(role) 부여를 이 스크립트가 처리)
-node server.js
-
-cd ../frontend
-python3 -m http.server 5500
+cd ..
 ```
+
+### 서버 시작 / 종료
+
+WAS(3000) · 프론트(5500) · 챗봇 서비스(8000)를 한 번에 백그라운드로 띄우고 내리는 스크립트가 프로젝트 루트에 있습니다.
+
+```bash
+bash start.sh   # 시작: 세 프로세스를 백그라운드로 실행, PID는 .run/*.pid, 로그는 .run/*.log
+bash stop.sh    # 종료: .run/*.pid에 저장된 PID로 세 프로세스를 종료
+```
+
+- 재시작(reboot)은 `bash stop.sh && bash start.sh`를 순서대로 실행하면 됩니다.
+- 로그 실시간 보기: `tail -f .run/was.log .run/frontend.log .run/chatbot.log`
+- 프로세스가 살아있는지 확인: `ps -p "$(cat .run/was.pid)"` (frontend/chatbot도 동일한 방식)
+- `start.sh`는 이미 실행 중인지 확인하지 않고 그냥 새로 띄우므로, 먼저 `stop.sh`를 실행하지 않은 채로 다시 `start.sh`를 실행하면 같은 포트를 중복으로 점유하려다 실패할 수 있습니다 — 항상 종료 후 시작하는 순서를 지켜야 합니다.
 
 환경변수(선택, 운영 배포 시 필수): `SESSION_SECRET`, `RRN_ENCRYPTION_KEY`(32바이트 hex), `FRONTEND_ORIGIN`, `USE_HTTPS=true`
 
@@ -155,6 +168,29 @@ router.get("/", requirePermission("documents:view"), ...);
 - 예약 시간대 중복/용량 제한 없음, 진료과(`department`)는 자유 텍스트 입력
 - 문의 답변은 수정 이력이 안 남음(덮어쓰기)
 - 감사 로그는 삭제/보관 기간 정책 없이 무기한 누적
+
+---
+
+## 챗봇 서비스 보안 강화 및 파이프라인 통합 (2026-09-08)
+
+오늘 진행된 챗봇 모듈(`chatbot-service`) 통합 과정에서 적용된 주요 보안 강화 및 버그 수정 사항입니다.
+
+### 작업 내용 요약
+
+- **감사 로그(Audit Log) 데코레이터 전면 적용**:
+  - 기존에 데모용으로 남아 사용되지 않던 `audit_decorator.py`의 `audit_log`를 `hospital_agent.py` 내의 모든 핵심 도구 함수(`tool_rag`, `tool_direct_answer`, `tool_book_appointment`, `tool_check_appointments`, `tool_check_medical_records`, `tool_list_documents`)에 일괄 적용했습니다.
+  - **결과**: 챗봇이 수행하는 모든 주요 동작이 비동기적으로 PII 마스킹, KMS 암호화, 무결성 해시 체이닝을 거쳐 `audit-logs/audit_log.jsonl`에 안전하게 기록됩니다.
+  - 추가로, 각 도구의 성격에 맞게 식별자(Action Name)를 명시적으로 부여하여 추후 로그 분석이 용이하도록 개선했습니다.
+
+- **FastAPI 서버 크래시(Crash) 취약점 수정**:
+  - `3-1-llm.py` 및 `2-embeddings.py` 내의 `require_gemini()` 함수에서 API 키가 누락되었거나 필수 패키지가 없을 때 `sys.exit(1)`을 호출하도록 하드코딩되어 있던 치명적인 문제를 발견했습니다.
+  - **수정사항**: `sys.exit(1)` 로직을 `raise ValueError` 및 `raise ImportError` 형태의 예외 처리(Exception)로 교체했습니다.
+  - **결과**: 환경변수 설정 누락 시 웹 서버(FastAPI) 전체 프로세스가 강제로 다운되는 현상을 방지하고, 에러를 안전하게 캐치하여 서버의 안정성을 대폭 향상시켰습니다.
+
+### 확인된 추가 보안/구조적 보완점 (추후 과제)
+- `app.py` 단의 SQLite 암호화 로그와 `audit_decorator.py`의 JSONL 로그가 중복 동작하는 파편화 현상이 존재하므로 통합이 필요합니다.
+- `slowapi`를 이용한 Rate Limiting이 프록시 환경에서 클라이언트 IP가 아닌 서버 IP로 고정될 우려가 있어 우회 방지 검토가 필요합니다.
+- 자연어 파싱(`tool_book_appointment`) 시 악의적인 특수문자 조합으로 인한 정규표현식(Regex) 과부하(ReDoS) 공격 방어 로직 추가가 고려되어야 합니다.
 
 ---
 

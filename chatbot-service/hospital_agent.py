@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 import tools_db
+from audit_decorator import audit_log
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -29,6 +30,7 @@ LLM = load_module("llm", "3-1-llm.py")
 sys.modules.setdefault("llm", LLM)
 RAG = load_module("rag", "3-2-Rag.py")
 
+@audit_log("list_documents")
 def tool_list_documents() -> str:
     docs = DOCUMENTS.load_documents()
     lines = ["[도구] 병원 정보 문서 목록 조회"]
@@ -36,9 +38,11 @@ def tool_list_documents() -> str:
         lines.append(f"- {doc.doc_id}: {doc.text}")
     return "\n".join(lines)
 
+@audit_log("rag")
 def tool_rag(question: str) -> str:
     return RAG.run_rag(question, top_k=2)
 
+@audit_log("direct_answer")
 def tool_direct_answer(question: str) -> str:
     return LLM.generate_direct_answer(question)
 
@@ -155,6 +159,7 @@ def is_within_business_hours(dt: datetime) -> bool:
     return WEEKDAY_OPEN <= dt.time() <= WEEKDAY_CLOSE
 
 
+@audit_log("book_appointment")
 def tool_book_appointment(question: str, patient_id: Optional[int]) -> str:
     department = find_department(question)
     if not department:
@@ -181,9 +186,11 @@ def tool_book_appointment(question: str, patient_id: Optional[int]) -> str:
     date_str = parsed_dt.strftime("%Y-%m-%d %H:%M:%S")
     return tools_db.book_appointment(patient_id, date_str, department)
 
+@audit_log("check_appointments")
 def tool_check_appointments(patient_id: Optional[int]) -> str:
     return tools_db.check_appointments(patient_id)
 
+@audit_log("check_medical_records")
 def tool_check_medical_records(patient_id: Optional[int]) -> str:
     return tools_db.check_medical_records(patient_id)
 

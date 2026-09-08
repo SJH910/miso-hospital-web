@@ -33,21 +33,15 @@ SYSTEM_INSTRUCTION = (
 def require_gemini():
     """google.generativeai 로드 + API 키 설정."""
     if not API_KEY:
-        print(
-            "GEMINI_API_KEY 가 필요합니다.\n"
-            "  .env 파일에 GEMINI_API_KEY='your-key' 를 설정해주세요.",
-            file=sys.stderr,
+        raise ValueError(
+            "GEMINI_API_KEY 가 필요합니다. "
+            ".env 파일에 GEMINI_API_KEY='your-key' 를 설정해주세요."
         )
-        sys.exit(1)
-        
+
     try:
         import google.generativeai as genai
     except ImportError:
-        print(
-            "패키지 필요: pip install google-generativeai",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise ImportError("패키지 필요: pip install google-generativeai")
         
     genai.configure(api_key=API_KEY)
     return genai

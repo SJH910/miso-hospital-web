@@ -1,0 +1,43 @@
+[
+    {
+        "event_id": "EVT-TEST-3a67fa12",
+        "timestamp": "2026-08-31T04:06:07.576289+00:00",
+        "action": "USER_UPDATE_PROFILE",
+        "actor": "test_user_01",
+        "resource": "profile_db",
+        "status": "success",
+        "payload": {
+            "user_name": "홍길동",
+            "ssn": "[RRN Omitted]",
+            "phone_number": "010-9999-8888",
+            "email": "gildong.hong@example.com",
+            "address": "Seoul Gangnam-gu"
+        }
+    },
+    {
+        "event_id": "EVT-TEST-298ee990",
+        "timestamp": "2026-05-23T04:06:07.576289+00:00",
+        "action": "EXPORT_SENSITIVE_DATA",
+        "actor": "admin",
+        "resource": "financial_records",
+        "status": "warning",
+        "payload": {
+            "credit_card": "4502-9999-8888-1234",
+            "account_balance": "$500,000",
+            "export_reason": "annual_audit"
+        }
+    },
+    {
+        "event_id": "EVT-TEST-c06d78c1",
+        "timestamp": "2026-08-31T04:06:07.576289+00:00",
+        "action": "BULK_DATA_ACCESS",
+        "actor": "guest_user",
+        "resource": "employee_health_records",
+        "status": "failed",
+        "payload": {
+            "attempted_records_count": 5000,
+            "query_ip": "10.0.0.99",
+            "alert_type": "high_risk_insider"
+        }
+    }
+]

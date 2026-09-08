@@ -12,9 +12,6 @@ import sys
 from pathlib import Path
 from typing import List
 
-from dotenv import load_dotenv
-load_dotenv()
-
 try:
     from documents import load_documents
 except ModuleNotFoundError:
@@ -36,7 +33,10 @@ API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 # 임베딩 모델 (문서/질문을 같은 공간의 벡터로 만듦)
 # 2026년 기준으로 text-embedding-004 기본값은 더 이상 이 예제와 맞지 않아
 # text 전용인 gemini-embedding-001을 기본값으로 사용한다.
-EMBED_MODEL = "models/gemini-embedding-001"
+EMBED_MODEL = os.getenv(
+    "GEMINI_EMBED_MODEL",
+    "models/gemini-embedding-001",
+)
 
 
 def _preview_embedding(vec: List[float], size: int = 8) -> str:
@@ -50,22 +50,14 @@ def _preview_embedding(vec: List[float], size: int = 8) -> str:
 def require_gemini():
     """google.generativeai 로드 + API 키 설정."""
     if not API_KEY:
-        print(
-            "GEMINI_API_KEY 가 필요합니다.\n"
-            "  export GEMINI_API_KEY='your-key'",
-            file=sys.stderr,
-            flush=True,
+        raise ValueError(
+            "GEMINI_API_KEY 가 필요합니다. "
+            "export GEMINI_API_KEY='your-key'"
         )
-        sys.exit(1)
     try:
         import google.generativeai as genai
     except ImportError:
-        print(
-            "패키지 필요: pip install google-generativeai",
-            file=sys.stderr,
-            flush=True,
-        )
-        sys.exit(1)
+        raise ImportError("패키지 필요: pip install google-generativeai")
     genai.configure(api_key=API_KEY)
     return genai
 
