@@ -1,5 +1,7 @@
 # 🏥 미소병원 최종 통합 보고서
 
+[기존 보고서와 통합 필요]
+
 세 프로젝트를 하나로 병합했습니다: `miso-hospital-feature-ocr`(팀 최신 백엔드, RBAC/예약/진료기록/OCR) + `Miso_chatbot-main`(실제 RAG 챗봇) + 기존 통합 작업물.
 
 ## 1. 베이스 선정
