@@ -15,7 +15,10 @@ class AuditEngine:
         timestamp = datetime.utcnow().isoformat()
         
         print(f"\n🔍 --- [디버깅] 이벤트 ID: {event_id} 파이프라인 진입 ---")
-        print(f"👉 [Step 0] 원본 페이로드: {payload}")
+        # [보안 수정 2026-09-09] 여기 있던 "Step 0: 원본 페이로드" print가 마스킹(아래) 이전 시점에
+        # 원본을 그대로 stdout에 찍고 있었음. start.sh가 uvicorn을 `> .run/chatbot.log`로 띄우기 때문에
+        # 이 출력이 평문으로 로그 파일에 영구 누적되는 유출 경로였음 - 완전히 제거함.
+        # 마스킹된 값은 바로 아래 [Step 1] print로 이미 확인 가능하므로 디버깅 가시성은 유지됨.
         # 1. PII 마스킹 처리 
         masked_payload = self.masking.mask_payload(payload)
         print(f"👉 [Step 1] 마스킹 완료: {masked_payload}")

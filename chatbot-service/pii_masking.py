@@ -1,4 +1,5 @@
 import re
+import math
 
 # spacy(+ 한국어 모델)는 무거운 선택적 의존성이라, 설치가 안 되어 있어도
 # 정규식 기반 마스킹(주민번호/전화번호/이메일/이름 패턴)은 그대로 동작하게 방어적으로 처리.
@@ -19,6 +20,120 @@ def build_spaced_regex(digit_counts):
         parts.append(part)
     return re.compile(r'(' + parts[0] + r')[\s\-\~_]*(' + parts[1] + r')')
 
+def shannon_entropy(s: str) -> float:
+    """
+    문자열의 섀넌 엔트로피(bits/char)를 계산합니다.
+    무작위성이 높을수록(=API 키/시크릿일 가능성이 높을수록) 값이 커집니다.
+    자연어 문장이나 반복 문자는 낮은 값을 가집니다.
+    """
+    if not s:
+        return 0.0
+    freq = {}
+    for ch in s:
+        freq[ch] = freq.get(ch, 0) + 1
+    length = len(s)
+    entropy = 0.0
+    for count in freq.values():
+        p = count / length
+        entropy -= p * math.log2(p)
+    return entropy
+
+
+# --- 내부 URL / 사설 IP 탐지 ---
+_OCTET = r'(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)'
+
+_PRIVATE_IP = (
+    r'(?:10(?:\.' + _OCTET + r'){3}'
+    r'|172\.(?:1[6-9]|2\d|3[01])(?:\.' + _OCTET + r'){2}'
+    r'|192\.168(?:\.' + _OCTET + r'){2}'
+    r'|127(?:\.' + _OCTET + r'){3})'
+)
+
+# RFC1918 사설 IP 대역 / localhost / 사내 전용 도메인 접미사(.internal, .corp, .local, .intranet)를 탐지.
+# 공인 IP(8.8.8.8)나 공개 도메인(naver.com, example.com)은 매칭되지 않도록 접미사 화이트리스트 방식 사용.
+_INTERNAL_URL_PATTERN = re.compile(
+    r'(?:https?://)?(?:' + _PRIVATE_IP + r'|localhost)(?::\d{2,5})?(?:/[^\s,]*)?'
+    r'|(?:https?://)?[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.(?:internal|corp|local|intranet)(?:/[^\s,]*)?'
+)
+
+# --- 알려진 서비스 API 키 시그니처 탐지 ---
+# 테이블 기반 설계: 새 서비스 추가 시 이 리스트에 (이름, 정규식)만 추가하면 됨.
+# 주의: 더 구체적인 패턴(Anthropic: sk-ant-)을 일반 패턴(OpenAI: sk-)보다 반드시 먼저 배치할 것
+#       (먼저 등록된 항목이 먼저 치환되므로, 순서가 바뀌면 sk-ant-... 가 OpenAI 규칙에 부분 매칭되어
+#        [MASKED_API_KEY] 뒤에 "ant-..." 잔여 문자열이 남는 버그가 생김).
+_API_KEY_SIGNATURES = [
+    ("AWS Access Key", re.compile(r'AKIA[0-9A-Z]{16}')),
+    ("GitHub Token", re.compile(r'gh[pousr]_[A-Za-z0-9]{36,}')),
+    ("Slack Token", re.compile(r'xox[baprs]-[A-Za-z0-9-]{10,48}')),
+    ("Google API Key", re.compile(r'AIza[0-9A-Za-z\-_]{30,45}')),
+    ("Anthropic Key", re.compile(r'sk-ant-[A-Za-z0-9-]{20,}')),
+    ("OpenAI Key", re.compile(r'sk-[A-Za-z0-9]{20,}')),
+    ("JWT", re.compile(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+')),
+]
+
+
+def _mask_known_signatures(text: str) -> str:
+    for _name, pattern in _API_KEY_SIGNATURES:
+        text = pattern.sub('[MASKED_API_KEY]', text)
+    return text
+
+# --- 키워드 문맥 기반 시크릿 탐지 ---
+# 그룹1: 키워드+구분자(그대로 유지), 그룹2: 실제 값(마스킹 대상)
+_KEYWORD_SECRET_PATTERN = re.compile(
+    r'((?:api[_\s-]?key|secret|access[_\s-]?key|token|password|bearer'
+    r'|API\s*키|시크릿\s*키|액세스\s*키|비밀번호)'
+    r'\s*[:=]?\s*(?:은|는|이|가)?\s*)'
+    r'([A-Za-z0-9][A-Za-z0-9._-]{7,})',
+    re.IGNORECASE
+)
+
+# --- 엔트로피 기반 폴백 탐지 ---
+# 위 세 단계(URL/시그니처/키워드)에 걸리지 않은, 영문자로 시작하는 16자 이상의
+# 순수 ASCII 토큰만 후보로 삼는다 (한글 문장은 애초에 후보에서 제외되어 오탐 방지).
+_ENTROPY_CANDIDATE_PATTERN = re.compile(
+    r'(?<![A-Za-z0-9_.\-])[A-Za-z][A-Za-z0-9]{15,}(?![A-Za-z0-9_.\-])'
+)
+_ENTROPY_THRESHOLD = 3.5  # bits/char - 오탐/미탐 트레이드오프 조정 지점
+
+
+def _mask_entropy_candidates(text: str) -> str:
+    def repl(match):
+        token = match.group(0)
+        if 'MASKED' in token:  # 이미 마스킹된 placeholder는 건드리지 않음 (멱등성 보장)
+            return token
+        if shannon_entropy(token) >= _ENTROPY_THRESHOLD:
+            return '[MASKED_API_KEY]'
+        return token
+    return _ENTROPY_CANDIDATE_PATTERN.sub(repl, text)
+
+
+def mask_secrets(text: str) -> str:
+    """
+    내부 URL/사설 IP 및 API 키(시크릿) 노출을 탐지해 마스킹합니다.
+    개인정보(PII) 보호가 아니라 시스템 접근 정보 유출 방지가 목적이며,
+    반드시 mask_pii()의 다른 정규식(특히 8자리 차트번호 패턴)보다 먼저 실행되어야
+    사설 IP의 끝자리 등이 다른 패턴에 잘못 먹히는 것을 방지할 수 있습니다.
+    """
+    if not text:
+        return text
+
+    masked_text = text
+
+    # 1. 내부 URL / 사설 IP
+    masked_text = _INTERNAL_URL_PATTERN.sub('[MASKED_INTERNAL_URL]', masked_text)
+
+    # 2. 알려진 서비스 API 키 시그니처
+    masked_text = _mask_known_signatures(masked_text)
+
+    # 3. 키워드 문맥 기반 시크릿 (api_key=, secret:, Bearer 등)
+    masked_text = _KEYWORD_SECRET_PATTERN.sub(r'\1[MASKED_API_KEY]', masked_text)
+
+    # 4. 엔트로피 기반 폴백 (위 세 단계에 안 걸린 나머지 고엔트로피 후보만)
+    masked_text = _mask_entropy_candidates(masked_text)
+
+    return masked_text
+
+
 def mask_pii(text: str) -> str:
     """
     사용자 입력 텍스트에서 PII(개인정보)를 탐지하고 마스킹 처리합니다.
@@ -27,6 +142,9 @@ def mask_pii(text: str) -> str:
         return text
 
     masked_text = text
+
+    # 0. 내부 URL / 사설 IP / API 키 (다른 숫자 기반 패턴보다 반드시 먼저 실행)
+    masked_text = mask_secrets(masked_text)
 
     # 1. 주민등록번호 (RRN)
     # \d 6번 + \d 7번

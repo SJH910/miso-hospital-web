@@ -33,7 +33,6 @@ ENCRYPTION_KEY = ENCRYPTION_KEY_STR.encode('utf-8')
 # 3. Log Rotation 적용
 LOG_DIR = parent_dir / "audit-logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-os.chmod(LOG_DIR, 0o700)  # 감사 로그 디렉토리는 이 컴퓨터의 다른 로컬 계정이 목록조차 못 보게 소유자 전용으로 제한
 LOG_FILE = LOG_DIR / "audit_log.jsonl"
 
 # 해시 체인이 서버 재시작 후에도 끊기지 않도록, 기존 로그 파일의 마지막 hash를 이어받게
@@ -46,19 +45,7 @@ audit_logger.setLevel(logging.INFO)
 # 기존 핸들러 제거 (중복 방지)
 audit_logger.handlers = []
 
-class SecureTimedRotatingFileHandler(TimedRotatingFileHandler):
-    """
-    감사 로그는 admin만 볼 수 있어야 하는데(MySQL audit_log는 이미 RBAC 적용됨),
-    이 파일은 OS 파일 권한에만 의존하고 있었다. _open()은 최초 파일 생성 시뿐 아니라
-    자정 로테이션으로 새 파일이 생길 때도 호출되는 지점이라, 여기서 매번 소유자 전용
-    권한(0o600)으로 좁혀야 로테이션 이후에도 계속 유지된다.
-    """
-    def _open(self):
-        stream = super()._open()
-        os.chmod(self.baseFilename, 0o600)
-        return stream
-
-rotating_handler = SecureTimedRotatingFileHandler(
+rotating_handler = TimedRotatingFileHandler(
     filename=LOG_FILE,
     when="midnight",
     interval=1,

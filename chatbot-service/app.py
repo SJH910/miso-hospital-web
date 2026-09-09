@@ -85,7 +85,13 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
     # 1. PII 마스킹 (LLM에게는 마스킹된 질문만 전달 - 원문이 외부 LLM API로 나가지 않게 함)
-    masked_question = mask_pii(original_question)
+    # fail-closed: 마스킹 자체가 실패했는데 그냥 진행하면 원문이 그대로 LLM으로 나갈 수 있으므로,
+    # 이 단계에서 예외가 나면 요청을 막는다 (아래 2/3단계처럼 "일단 진행"하지 않음).
+    try:
+        masked_question = mask_pii(original_question)
+    except Exception as e:
+        print(f"PII masking error: {e}")
+        raise HTTPException(status_code=500, detail="요청을 처리할 수 없습니다. 잠시 후 다시 시도해주세요.")
 
     # 2. 에이전트 실행. patient_id는 마스킹 대상이 아니라 "누구인지 식별하는 세션 값"이므로
     #    마스킹된 질문과 별도로 그대로 전달한다 (예약/기록 조회 도구가 사용).

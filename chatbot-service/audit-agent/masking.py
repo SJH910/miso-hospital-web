@@ -1,55 +1,36 @@
-import re
+import sys
+from pathlib import Path
+
+# [2026-09-XX 구조 변경 반영] audit-agent가 프로젝트 루트가 아니라 chatbot-service/ 안으로
+# 이동했다. 즉 이 파일(chatbot-service/audit-agent/masking.py) 기준으로 pii_masking.py는
+# 이제 한 단계만 올라가면 있다 (parent.parent가 곧 chatbot-service 디렉터리 자체).
+# 예전 구조(프로젝트 루트/audit-agent, 프로젝트 루트/chatbot-service)에서 쓰던
+# "parent.parent / chatbot-service" 계산은 새 구조에서는 chatbot-service/chatbot-service라는
+# 존재하지 않는 경로를 만들어버리므로 반드시 함께 고쳐야 했다.
+_chatbot_service_dir = Path(__file__).resolve().parent.parent
+if str(_chatbot_service_dir) not in sys.path:
+    sys.path.insert(0, str(_chatbot_service_dir))
+
+from pii_masking import mask_pii
+
 
 class AuditMasking:
     def __init__(self):
-        # Regex 패턴 정의
-        self.email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
-        self.phone_pattern = re.compile(r'010-\d{4}-\d{4}')
-        self.ssn_pattern = re.compile(r'\d{6}-\d{7}')
-        
-        # 악의적 쿼리 탐지용 키워드
+        # 악의적 쿼리(프롬프트 인젝션) 탐지용 키워드.
+        # PII/시크릿 마스킹과는 별개의 관심사라 여기 그대로 남겨둔다.
         self.malicious_keywords = ["지시사항 무시", "프롬프트 출력", "시스템 프롬프트", "이전 지시 무시"]
 
     def _mask_string(self, text: str) -> tuple[str, bool]:
-        """문자열에서 PII를 찾아 마스킹하고, 악의적 접근인지 확인하여 반환"""
+        """문자열에서 PII/내부 URL/API 키를 마스킹하고, 악의적 접근인지 확인하여 반환"""
         if not isinstance(text, str):
             return text, False
-            
-        original_text = text
-        is_malicious = False
 
-        # 악의적 의도 탐지
-        for kw in self.malicious_keywords:
-            if kw in text:
-                is_malicious = True
-                break
+        is_malicious = any(kw in text for kw in self.malicious_keywords)
 
-        # 1. 주민등록번호 마스킹 (뒷자리 강력 마스킹)
-        def replace_ssn(match):
-            ssn = match.group(0)
-            parts = ssn.split('-')
-            return f"{parts[0]}-*******"
-        text = self.ssn_pattern.sub(replace_ssn, text)
+        # 주민번호/전화번호/이메일/이름/내부 URL/API 키 전부 - chatbot-service와 동일한 단일 구현.
+        masked_text = mask_pii(text)
 
-        # 2. 전화번호 마스킹 (가운데 자리 마스킹)
-        def replace_phone(match):
-            phone = match.group(0)
-            parts = phone.split('-')
-            return f"{parts[0]}-****-{parts[2]}"
-        text = self.phone_pattern.sub(replace_phone, text)
-
-        # 3. 이메일 마스킹
-        def replace_email(match):
-            email = match.group(0)
-            local, domain = email.split('@')
-            if len(local) > 3:
-                masked_local = local[:3] + '*' * (len(local) - 3)
-            else:
-                masked_local = local[0] + '*' * (len(local) - 1)
-            return f"{masked_local}@{domain}"
-        text = self.email_pattern.sub(replace_email, text)
-
-        return text, is_malicious
+        return masked_text, is_malicious
 
     def _recursive_mask(self, data, malicious_flag_ref):
         if isinstance(data, dict):

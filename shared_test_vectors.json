@@ -1,0 +1,14 @@
+[
+  {"text": "내부망 접속: 10.0.5.23", "expect_internal_url": true, "expect_api_key": false},
+  {"text": "http://localhost:3000/health 확인해줘", "expect_internal_url": true, "expect_api_key": false},
+  {"text": "admin.corp 도메인으로 접속하세요", "expect_internal_url": true, "expect_api_key": false},
+  {"text": "네이버(naver.com)에 접속했어요", "expect_internal_url": false, "expect_api_key": false},
+  {"text": "구글 DNS는 8.8.8.8 입니다", "expect_internal_url": false, "expect_api_key": false},
+  {"text": "AWS 키는 AKIAIOSFODNN7EXAMPLE 입니다", "expect_internal_url": false, "expect_api_key": true},
+  {"text": "슬랙 토큰 xoxb-1234567890-abcdefghijklmnop", "expect_internal_url": false, "expect_api_key": true},
+  {"text": "앤트로픽 키 sk-ant-api03-abcdefghijklmnopqrstuvwxyzABCDEFGHIJ 입니다", "expect_internal_url": false, "expect_api_key": true},
+  {"text": "secret=myS3cr3tInternalValue2024xyz", "expect_internal_url": false, "expect_api_key": true},
+  {"text": "이 값 저장해줘: aZ7kQ2mP9xL4vN8wT1rB", "expect_internal_url": false, "expect_api_key": true},
+  {"text": "오늘 회의는 3시에 시작합니다", "expect_internal_url": false, "expect_api_key": false},
+  {"text": "차트 12345678 서버는 10.10.10.10 입니다", "expect_internal_url": true, "expect_api_key": false}
+]
