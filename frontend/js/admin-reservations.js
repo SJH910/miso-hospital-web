@@ -26,6 +26,7 @@ async function loadUserInfo() {
     }
 
     document.getElementById('userInfo').textContent = `접속자: ${me.name} 님`;
+    renderNavLinks(me.role);
 }
 
 function formatDateTime(isoString) {

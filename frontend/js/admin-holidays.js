@@ -19,6 +19,7 @@ async function loadUserInfo() {
     }
 
     document.getElementById('userInfo').textContent = `접속자: ${me.name} 님 (관리자)`;
+    renderNavLinks(me.role);
 }
 
 // [XSS 방지] textContent만 사용
@@ -87,6 +88,15 @@ document.getElementById('addHolidayButton').addEventListener('click', async () =
     document.getElementById('holidayDate').value = '';
     document.getElementById('holidayReason').value = '';
     loadHolidays();
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch(`${WAS_BASE}/api/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
+    });
+    window.location.href = 'index.html';
 });
 
 loadUserInfo();

@@ -24,21 +24,10 @@ async function applyLoggedInState(me) {
 
     navLoginBtn.replaceWith(userChip, logoutBtn);
     document.getElementById('navSignupLink')?.remove();
+    renderNavLinks(me.role);
     const isAdmin = me.role === 'admin';
     const isStaff = me.role === 'staff';
-    if (isAdmin) {
-        document.getElementById('navAdminLink').style.display = '';
-        document.getElementById('navHolidaysLink').style.display = '';
-        document.getElementById('navReservationManageLink').style.display = '';
-        document.getElementById('navBoardAnswerLink').style.display = '';
-        document.getElementById('navAccountsLink').style.display = '';
-    } else if (isStaff) {
-        document.getElementById('navReservationManageLink').style.display = '';
-        document.getElementById('navBoardAnswerLink').style.display = '';
-        document.getElementById('navAccountsLink').style.display = '';
-    } else {
-        document.getElementById('navReservationLink').style.display = '';
-        document.getElementById('navRecordsLink').style.display = '';
+    if (!isAdmin && !isStaff) {
         document.getElementById('chatWidget').style.display = 'block';
     }
 
@@ -98,6 +87,10 @@ async function applyLoggedInState(me) {
 }
 
 async function initHome() {
+    // 로그인 여부와 무관하게 "진료문의 게시판"(roles:null 항목)은 항상 보여야 하므로,
+    // 로그인 상태 확인 전에 role 없이 한 번 먼저 그려둔다.
+    renderNavLinks(null);
+
     const res = await fetch(`${WAS_BASE}/api/me`, { credentials: 'include' });
     if (!res.ok) return; // 로그아웃 상태 — 기본 랜딩 화면(로그인 유도) 그대로 둔다
     const me = await res.json();

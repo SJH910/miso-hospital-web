@@ -23,6 +23,7 @@ async function loadUserInfo() {
 
     myId = me.id;
     document.getElementById('userInfo').textContent = `접속자: ${me.name} 님`;
+    renderNavLinks(me.role);
 
     // 전체 계정 목록 + 역할 변경(accounts:manage)은 admin 전용.
     // staff는 위 "환자 등록"(patients:register) 섹션만 사용한다.

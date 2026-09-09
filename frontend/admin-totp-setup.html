@@ -6,16 +6,21 @@
     <title>미소 병원 - 로그인 보안(TOTP) 설정 (관리자)</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="landing-page">
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <span id="navLinks"></span>
+            <span class="user-chip" id="userInfo"></span>
+            <button type="button" class="btn-logout" id="logoutBtn">로그아웃</button>
+        </nav>
+    </header>
+
     <div class="board-container">
-        <header>
-            <h2>로그인 보안 설정</h2>
-            <nav class="main-nav" style="margin-right:auto; margin-left:16px;">
-                <a href="admin.html">문서 스캔으로 이동</a>
-                <a href="admin-holidays.html">휴진일 관리</a>
-            </nav>
-            <span class="user-info" id="userInfo"></span>
-        </header>
+        <h2>로그인 보안 설정</h2>
 
         <section class="write-section">
             <h3>새 위치 로그인 추가 인증 (TOTP)</h3>
@@ -31,12 +36,16 @@
             <div id="enrollSection" hidden>
                 <ol>
                     <li>아래 "등록 시작" 버튼을 눌러 비밀키를 발급받습니다.</li>
-                    <li>구글 OTP(Google Authenticator), Authy 등 인증 앱에서 "수동으로 키 입력"을 선택하고, 아래 나오는 코드를 그대로 입력합니다.</li>
+                    <li>구글 OTP(Google Authenticator), Authy 등 인증 앱에서 "QR 코드 스캔"으로 아래 QR을 찍거나, "수동으로 키 입력"을 선택해 비밀키를 직접 입력합니다.</li>
                     <li>앱에 표시되는 6자리 코드를 아래 입력창에 넣고 "등록 완료"를 누릅니다.</li>
                 </ol>
                 <button type="button" id="startEnrollButton" class="btn-primary">등록 시작</button>
 
                 <div id="secretBox" hidden>
+                    <div class="input-group">
+                        <label>QR 코드로 스캔 (또는 아래 비밀키를 수동 입력)</label>
+                        <div id="qrCode" style="width:200px;"></div>
+                    </div>
                     <div class="input-group">
                         <label>인증 앱에 입력할 비밀키</label>
                         <div id="secretDisplay" class="ocr-preview" style="user-select:all;"></div>
@@ -58,6 +67,8 @@
 
     <script src="js/was-config.js"></script>
     <script src="js/toast.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/qrcode.js"></script>
     <script src="js/admin-totp-setup.js"></script>
 </body>
 </html>

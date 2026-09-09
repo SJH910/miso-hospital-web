@@ -14,6 +14,7 @@ async function loadUserInfo() {
     }
 
     document.getElementById('userInfo').textContent = `접속자: ${me.name} 님 (관리자)`;
+    renderNavLinks(me.role);
 }
 
 async function loadStatus() {
@@ -41,12 +42,22 @@ document.getElementById('startEnrollButton').addEventListener('click', async () 
         showToast('등록 시작에 실패했습니다.');
         return;
     }
-    const { secret } = await res.json();
+    const { secret, otpauthUri } = await res.json();
     pendingSecret = secret;
 
     document.getElementById('secretDisplay').textContent = secret;
+    renderQrCode(otpauthUri);
     document.getElementById('secretBox').hidden = false;
 });
+
+// otpauthUri는 서버(totp.js)가 base32 비밀키로 직접 생성한 값(외부 입력 아님)이라
+// innerHTML로 넣어도 안전 - qrcode-generator가 그린 <svg> 마크업 그대로 삽입.
+function renderQrCode(otpauthUri) {
+    const qr = qrcode(0, 'M'); // typeNumber 0 = 데이터 길이에 맞춰 자동 결정
+    qr.addData(otpauthUri);
+    qr.make();
+    document.getElementById('qrCode').innerHTML = qr.createSvgTag(4);
+}
 
 document.getElementById('confirmEnrollButton').addEventListener('click', async () => {
     const code = document.getElementById('verifyCode').value.trim();
@@ -90,6 +101,15 @@ document.getElementById('disableButton').addEventListener('click', async () => {
     }
     showToast('TOTP가 해제되었습니다.', 'success');
     loadStatus();
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch(`${WAS_BASE}/api/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
+    });
+    window.location.href = 'index.html';
 });
 
 loadUserInfo();

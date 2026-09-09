@@ -57,21 +57,17 @@ async function loadUserInfo() {
     setCsrfToken(me.csrfToken); // 새로고침 등으로 토큰이 없을 경우를 대비해 /api/me에서도 재확보
     document.getElementById('userInfo').textContent = `${me.name}님`;
 
-    // 역할별로 보이는 메뉴/영역이 다름 (환자 화면에는 관리자 기능의 존재 자체를 드러내지 않음).
-    // 실제 접근 제어는 서버(각 라우트의 requirePermission)가 담당 — 이건 UI 편의를 위한 것일 뿐.
-    if (me.role === 'admin') {
-        document.getElementById('adminLink').style.display = 'inline-block';
-        document.getElementById('holidaysLink').style.display = 'inline-block';
-        document.getElementById('reservationManageLink').style.display = 'inline-block';
-        document.getElementById('boardAnswerLink').style.display = 'inline-block';
-    } else if (me.role === 'staff') {
-        // staff는 board:write/board:read 권한이 없어 이 페이지의 작성 폼·상세보기(view.html)를 쓸 수 없다.
-        // 전체 문의 조회·답변은 admin-board.html 전용 화면에서 처리하므로 그쪽으로 보낸다.
+    // staff는 board:write/board:read 권한이 없어 이 페이지의 작성 폼·상세보기(view.html)를 쓸 수 없다.
+    // 전체 문의 조회·답변은 admin-board.html 전용 화면에서 처리하므로 그쪽으로 보낸다.
+    if (me.role === 'staff') {
         window.location.href = 'admin-board.html';
         return;
-    } else {
-        document.getElementById('reservationLink').style.display = 'inline-block';
-        document.getElementById('recordsLink').style.display = 'inline-block';
+    }
+
+    // nav는 페이지와 무관하게 항상 동일(js/nav.js) - 실제 접근 제어는 서버(각 라우트의
+    // requirePermission)가 담당하므로, 여기서 링크를 보여주고 감추는 건 UI 편의를 위한 것일 뿐.
+    renderNavLinks(me.role);
+    if (me.role === 'patient') {
         document.getElementById('chatWidget').style.display = 'block';
     }
 }

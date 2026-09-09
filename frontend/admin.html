@@ -6,18 +6,21 @@
     <title>미소 병원 - 문서 스캔 (관리자)</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="landing-page">
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <span id="navLinks"></span>
+            <span class="user-chip" id="userInfo"></span>
+            <button type="button" class="btn-logout" id="logoutBtn">로그아웃</button>
+        </nav>
+    </header>
+
     <div class="board-container">
-        <header>
-            <h2>문서 스캔 (OCR)</h2>
-            <nav class="main-nav" style="margin-right:auto; margin-left:16px;">
-                <a href="admin-holidays.html">휴진일 관리</a>
-                <a href="admin-reservations.html">예약 관리</a>
-                <a href="admin-board.html">문의 답변</a>
-                <a href="admin-totp-setup.html">로그인 보안</a>
-            </nav>
-            <span class="user-info" id="userInfo"></span>
-        </header>
+        <h2>문서 스캔 (OCR)</h2>
 
         <section class="write-section">
             <h3>진단서 / 처방전 / 영수증 이미지 업로드</h3>
@@ -62,6 +65,7 @@
 
     <script src="js/was-config.js"></script>
     <script src="js/toast.js"></script>
+    <script src="js/nav.js"></script>
     <script src="js/admin.js"></script>
 </body>
 </html>

@@ -25,6 +25,13 @@ body {
     margin-top: 50px;
 }
 
+/* admin.html/admin-holidays.html/admin-totp-setup.html - 다른 화면들처럼 site-header(홈 링크·nav·
+   로그아웃)를 쓰기 위해 body.landing-page(block 레이아웃)를 같이 쓴다. body가 더 이상 flex로
+   중앙 정렬해주지 않으므로, 여기서 직접 수평 중앙 정렬 + 여백을 잡아준다. */
+body.landing-page .board-container {
+    margin: 40px auto 60px;
+}
+
 h2, h3 {
     color: #2c3e50;
     margin-bottom: 20px;
@@ -174,6 +181,15 @@ body.landing-page {
     display: flex;
     align-items: center;
     gap: 28px;
+}
+
+/* #navLinks(js/nav.js가 채우는 역할별 메뉴 묶음)도 .main-nav와 같은 간격으로 나열되도록 -
+   #navLinks 자체는 .main-nav의 flex item 하나라서, 안 넣으면 그 안의 <a>들끼리는 gap이 안 먹는다. */
+#navLinks {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px 28px;
 }
 
 .main-nav a {

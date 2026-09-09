@@ -9,6 +9,7 @@ async function loadUserInfo() {
     const me = await res.json();
     setCsrfToken(me.csrfToken);
     document.getElementById('userInfo').textContent = `${me.name}님`;
+    renderNavLinks(me.role);
 }
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {

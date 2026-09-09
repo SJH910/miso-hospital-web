@@ -16,6 +16,7 @@ async function loadUserInfo() {
     }
 
     document.getElementById('userInfo').textContent = `접속자: ${me.name} 님 (관리자)`;
+    renderNavLinks(me.role);
 }
 
 async function loadPatients() {
@@ -157,6 +158,15 @@ document.getElementById('saveButton').addEventListener('click', async function (
     } finally {
         this.disabled = false;
     }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch(`${WAS_BASE}/api/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
+    });
+    window.location.href = 'index.html';
 });
 
 loadUserInfo();
