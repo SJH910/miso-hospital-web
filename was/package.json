@@ -16,7 +16,8 @@
     "express-rate-limit": "^7.4.0",
     "sanitize-html": "^2.13.0",
     "multer": "^2.3.0",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "geoip-lite": "^1.4.10"
   },
   "allowScripts": {
     "bcrypt@5.1.1": true,

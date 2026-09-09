@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 로그인 보안(TOTP) 설정 (관리자)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="board-container">
+        <header>
+            <h2>로그인 보안 설정</h2>
+            <nav class="main-nav" style="margin-right:auto; margin-left:16px;">
+                <a href="admin.html">문서 스캔으로 이동</a>
+                <a href="admin-holidays.html">휴진일 관리</a>
+            </nav>
+            <span class="user-info" id="userInfo"></span>
+        </header>
+
+        <section class="write-section">
+            <h3>새 위치 로그인 추가 인증 (TOTP)</h3>
+            <p style="color:#6b7785; font-size:14px;">
+                등록해두면, 관리자 계정으로 처음 보는 IP·지역에서 로그인할 때 비밀번호 외에
+                구글 OTP·Authy 같은 인증 앱의 6자리 코드도 함께 입력해야 로그인이 완료됩니다.
+                등록하지 않아도 로그인은 계속 가능하지만, 이 추가 보호는 적용되지 않습니다.
+            </p>
+
+            <div id="statusBox"></div>
+
+            <!-- 미등록 상태일 때만 보이는 등록 절차 -->
+            <div id="enrollSection" hidden>
+                <ol>
+                    <li>아래 "등록 시작" 버튼을 눌러 비밀키를 발급받습니다.</li>
+                    <li>구글 OTP(Google Authenticator), Authy 등 인증 앱에서 "수동으로 키 입력"을 선택하고, 아래 나오는 코드를 그대로 입력합니다.</li>
+                    <li>앱에 표시되는 6자리 코드를 아래 입력창에 넣고 "등록 완료"를 누릅니다.</li>
+                </ol>
+                <button type="button" id="startEnrollButton" class="btn-primary">등록 시작</button>
+
+                <div id="secretBox" hidden>
+                    <div class="input-group">
+                        <label>인증 앱에 입력할 비밀키</label>
+                        <div id="secretDisplay" class="ocr-preview" style="user-select:all;"></div>
+                    </div>
+                    <div class="input-group">
+                        <label for="verifyCode">인증 앱에 표시된 6자리 코드</label>
+                        <input type="text" id="verifyCode" inputmode="numeric" maxlength="6" placeholder="000000">
+                    </div>
+                    <button type="button" id="confirmEnrollButton" class="btn-primary">등록 완료</button>
+                </div>
+            </div>
+
+            <!-- 이미 등록된 상태일 때만 보이는 해제 버튼 -->
+            <div id="enabledSection" hidden>
+                <button type="button" id="disableButton" class="btn-logout">TOTP 해제</button>
+            </div>
+        </section>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/admin-totp-setup.js"></script>
+</body>
+</html>

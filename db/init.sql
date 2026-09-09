@@ -25,8 +25,10 @@ CREATE TABLE patients (
     password VARCHAR(100) NOT NULL,       -- [보안 강화] bcrypt 해시 저장 (60자 고정 길이, 평문 저장 금지)
     name VARCHAR(20) NOT NULL,
     rrn VARCHAR(100) NOT NULL,            -- [보안 강화] AES-256-GCM 암호문(base64) 저장. 평문보다 길어져 컬럼 확장
-    role ENUM('patient', 'staff', 'admin') NOT NULL DEFAULT 'patient'  -- RBAC의 역할(role). 이 값 자체가 권한을 뜻하지 않고,
+    role ENUM('patient', 'staff', 'admin') NOT NULL DEFAULT 'patient',  -- RBAC의 역할(role). 이 값 자체가 권한을 뜻하지 않고,
                                                                -- 실제 권한은 아래 roles/permissions/role_permissions로 조회한다.
+    totp_secret VARCHAR(64) NULL  -- [관리자 신규 위치 인증] TOTP 비밀키(base32). NULL이면 미등록 상태.
+                                   -- 관리자가 이 값을 등록해야 새 IP/지역 로그인 시 추가 인증이 활성화됨.
 );
 
 -- RBAC: 역할(Role). patients.role의 값과 이름이 대응된다.

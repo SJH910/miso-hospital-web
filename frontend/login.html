@@ -33,6 +33,11 @@
                     <label for="password">비밀번호</label>
                     <input type="password" id="password" name="password" placeholder="비밀번호를 입력하세요">
                 </div>
+                <!-- 관리자가 처음 보는 위치에서 로그인할 때만 서버 응답에 따라 노출됨 -->
+                <div class="input-group" id="totpGroup" hidden>
+                    <label for="totpCode">인증 앱의 6자리 코드</label>
+                    <input type="text" id="totpCode" name="totpCode" inputmode="numeric" maxlength="6" placeholder="000000">
+                </div>
                 <button type="submit" class="btn-primary">로그인</button>
             </form>
             <p style="margin-top:16px;">
