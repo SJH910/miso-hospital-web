@@ -30,12 +30,14 @@ if not ENCRYPTION_KEY_STR:
     raise RuntimeError("AUDIT_ENCRYPTION_KEY가 .env 파일에 설정되지 않았습니다.")
 ENCRYPTION_KEY = ENCRYPTION_KEY_STR.encode('utf-8')
 
-audit_engine_instance = AuditEngine(encryption_key=ENCRYPTION_KEY, retention_days=90)
-
 # 3. Log Rotation 적용
 LOG_DIR = parent_dir / "audit-logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "audit_log.jsonl"
+
+# 해시 체인이 서버 재시작 후에도 끊기지 않도록, 기존 로그 파일의 마지막 hash를 이어받게
+# LOG_FILE 경로를 넘겨준다 (LOG_FILE을 AuditEngine보다 먼저 정의해야 하는 이유).
+audit_engine_instance = AuditEngine(encryption_key=ENCRYPTION_KEY, retention_days=90, log_file_path=str(LOG_FILE))
 
 # 매 자정마다(midnight) 파일을 분할하여 백업하고, 최근 30개 파일만 보관
 audit_logger = logging.getLogger("AuditLogger")

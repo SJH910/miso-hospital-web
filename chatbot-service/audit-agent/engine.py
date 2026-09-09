@@ -5,8 +5,8 @@ from .crypto import AuditCrypto
 from .masking import AuditMasking  # 새롭게 추가된 마스킹 모듈
 
 class AuditEngine:
-    def __init__(self, encryption_key: bytes, retention_days: int = 90):
-        self.hash_chain = HashChain()
+    def __init__(self, encryption_key: bytes, retention_days: int = 90, log_file_path: str = None):
+        self.hash_chain = HashChain(log_file_path)
         self.retention = RetentionPolicy(default_days=retention_days)
         self.crypto = AuditCrypto(key=encryption_key)
         self.masking = AuditMasking()  # 마스킹 객체 초기화
