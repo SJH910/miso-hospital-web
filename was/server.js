@@ -1,3 +1,10 @@
+// [보안 강화] RRN_ENCRYPTION_KEY 등 시크릿을 was/.env에서 로드. config.js가 process.env를
+// 읽기 전에 먼저 실행돼야 하므로 최상단에 위치. path를 명시하지 않으면 dotenv가
+// process.cwd() 기준으로 .env를 찾는데, start.sh가 이 프로세스를 프로젝트 루트에서
+// 띄우기 때문에(`node was/server.js`, cd was 없음) cwd가 was/가 아니라 루트가 되어
+// was/.env를 못 찾는 문제가 생긴다 - __dirname 기준 절대경로로 고정해 이 문제를 피한다.
+require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");

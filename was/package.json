@@ -8,16 +8,17 @@
     "seed": "node seed.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "mysql2": "^3.11.0",
-    "cors": "^2.8.5",
-    "express-session": "^1.18.0",
     "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
-    "sanitize-html": "^2.13.0",
+    "express-session": "^1.18.0",
+    "geoip-lite": "^1.4.10",
     "multer": "^2.3.0",
-    "tesseract.js": "^7.0.0",
-    "geoip-lite": "^1.4.10"
+    "mysql2": "^3.11.0",
+    "sanitize-html": "^2.13.0",
+    "tesseract.js": "^7.0.0"
   },
   "allowScripts": {
     "bcrypt@5.1.1": true,
