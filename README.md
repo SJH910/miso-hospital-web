@@ -192,6 +192,18 @@ router.get("/", requirePermission("documents:view"), ...);
 - `slowapi`를 이용한 Rate Limiting이 프록시 환경에서 클라이언트 IP가 아닌 서버 IP로 고정될 우려가 있어 우회 방지 검토가 필요합니다.
 - 자연어 파싱(`tool_book_appointment`) 시 악의적인 특수문자 조합으로 인한 정규표현식(Regex) 과부하(ReDoS) 공격 방어 로직 추가가 고려되어야 합니다.
 
+### 챗봇 로그/키 파일 경로 고정 (2026-09-09)
+
+`chatbot-service/app.py`의 `DB_FILE`(`chatbot_logs.db`)·`KEY_FILE`(`secret.key`)이 상대경로라, 실행 위치(cwd)에 따라 다른 파일을 보는 문제가 있었습니다(`start.sh`로 정상 실행하면 우연히 프로젝트 루트를 봤지만, `chatbot-service/` 안에서 직접 `uvicorn`을 띄우면 그 안에 새 DB·새 키가 생성됨). `Path(__file__).resolve().parent.parent` 기준 절대경로로 고정해, 실행 위치와 무관하게 항상 프로젝트 루트의 같은 파일을 보도록 수정했습니다.
+
+**주의사항**:
+- `chatbot-service/`는 항상 프로젝트 루트의 바로 아래(1단계)에 있어야 합니다 — 디렉토리 구조를 재배치하면 `parent.parent` 계산이 틀어집니다.
+- `secret.key`는 프로젝트 루트에 있는 파일이 유일한 정본입니다. 이 파일을 잃어버리면 기존에 암호화 저장된 `chatbot_logs.db` 로그를 영구히 복호화할 수 없습니다(백업 없음, `.gitignore`에 포함되어 git 히스토리로도 복구 불가).
+
+**참고사항**:
+- 이전에 실수로 `chatbot-service/` 안에 생성됐던 스테일 `chatbot_logs.db`(빈 파일)는 삭제했습니다.
+- 자세한 조사 배경(로그 파일 로테이션 확인, 실제 DB 값 검증 등)은 `LogDB_plan.md` 3-2·3-3 섹션 참고.
+
 ---
 
 ## 확정 필요 / 확인 필요 사항 (2026-09-04 기준)

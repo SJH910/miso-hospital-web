@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 import sqlite3
 import os
+from pathlib import Path
 from cryptography.fernet import Fernet
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -30,7 +31,11 @@ app.add_middleware(
 )
 
 # --- 감사 로그 암호화 키 ---
-KEY_FILE = "secret.key"
+# 실행 위치(cwd)에 상관없이 항상 프로젝트 루트의 같은 파일을 가리키도록 절대경로로 고정.
+# (상대경로였을 때는 chatbot-service/ 안에서 직접 실행하면 새 키가 또 생성돼서
+#  기존 로그를 영구히 복호화 못 하게 되는 문제가 있었음 — LogDB_plan.md 3-3 참고)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+KEY_FILE = str(PROJECT_ROOT / "secret.key")
 if not os.path.exists(KEY_FILE):
     key = Fernet.generate_key()
     with open(KEY_FILE, "wb") as key_file:
@@ -44,7 +49,7 @@ cipher = Fernet(key)
 # --- 감사 로그 DB (SQLite) ---
 # 이 로그는 "LLM에 원문 대신 마스킹된 텍스트가 전달됐는지"를 사후 감사하기 위한 것으로,
 # 환자가 본인 채팅 이력을 다시 보는 기능(그건 WAS의 chat_messages/MySQL이 담당)과는 별개다.
-DB_FILE = "chatbot_logs.db"
+DB_FILE = str(PROJECT_ROOT / "chatbot_logs.db")
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
