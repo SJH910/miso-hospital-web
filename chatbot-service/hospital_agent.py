@@ -22,21 +22,15 @@ def load_module(module_name: str, file_name: str):
     spec.loader.exec_module(module)
     return module
 
-DOCUMENTS = load_module("documents", "1-documents.py")
-sys.modules.setdefault("documents", DOCUMENTS)
 EMBEDDINGS = load_module("embeddings", "2-embeddings.py")
 sys.modules.setdefault("embeddings", EMBEDDINGS)
 LLM = load_module("llm", "3-1-llm.py")
 sys.modules.setdefault("llm", LLM)
 RAG = load_module("rag", "3-2-Rag.py")
 
-@audit_log("list_documents")
-def tool_list_documents() -> str:
-    docs = DOCUMENTS.load_documents()
-    lines = ["[도구] 병원 정보 문서 목록 조회"]
-    for doc in docs:
-        lines.append(f"- {doc.doc_id}: {doc.text}")
-    return "\n".join(lines)
+@audit_log("check_scanned_documents")
+def tool_check_scanned_documents(patient_id: Optional[int]) -> str:
+    return tools_db.check_scanned_documents(patient_id)
 
 @audit_log("rag")
 def tool_rag(question: str) -> str:
@@ -206,6 +200,9 @@ def choose_action(question: str) -> tuple[str, str]:
     if any(keyword in question for keyword in ["진료기록", "진료 기록", "차트 기록", "기록 확인"]):
         return ("진료기록 조회 요청이므로 진료기록 도구를 사용", "check_medical_records")
 
+    if any(keyword in question for keyword in ["영수증", "처방전", "진단서", "스캔 문서", "스캔한 문서", "내역서"]):
+        return ("스캔 문서 조회 요청이므로 스캔 문서 도구를 사용", "check_scanned_documents")
+
     # "예약해줘"처럼 구체적인 문구뿐 아니라, 그냥 "예약"이라는 단어만 있어도 예약 시도로 간주한다.
     # (위에서 조회 의도는 이미 먼저 걸러졌으므로, 여기서 "예약"만 봐도 조회와 헷갈릴 일이 없다.)
     if any(keyword in question for keyword in ["예약해줘", "예약 신청", "예약하고 싶", "예약할래", "예약"]):
@@ -231,6 +228,8 @@ def run_agent(question: str, patient_id: Optional[int] = None) -> str:
         return tool_check_appointments(patient_id)
     if action_key == "check_medical_records":
         return tool_check_medical_records(patient_id)
+    if action_key == "check_scanned_documents":
+        return tool_check_scanned_documents(patient_id)
     if action_key == "rag":
         return tool_rag(question)
     return tool_direct_answer(question)

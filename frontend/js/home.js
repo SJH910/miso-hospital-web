@@ -31,11 +31,14 @@ async function applyLoggedInState(me) {
         document.getElementById('navHolidaysLink').style.display = '';
         document.getElementById('navReservationManageLink').style.display = '';
         document.getElementById('navBoardAnswerLink').style.display = '';
+        document.getElementById('navAccountsLink').style.display = '';
     } else if (isStaff) {
         document.getElementById('navReservationManageLink').style.display = '';
         document.getElementById('navBoardAnswerLink').style.display = '';
+        document.getElementById('navAccountsLink').style.display = '';
     } else {
         document.getElementById('navReservationLink').style.display = '';
+        document.getElementById('navRecordsLink').style.display = '';
         document.getElementById('chatWidget').style.display = 'block';
     }
 

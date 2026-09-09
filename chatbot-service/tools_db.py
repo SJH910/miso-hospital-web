@@ -115,3 +115,39 @@ def check_medical_records(patient_id: int) -> str:
         return "진료 기록이 존재합니다. 자세한 내역은 다음 링크에서 확인하실 수 있습니다.\n[진료 기록 바로가기](/records.html)"
     except Exception as e:
         return f"진료 기록 조회 중 오류가 발생했습니다: {str(e)}"
+
+
+DOCUMENT_TYPE_LABELS = {"prescription": "처방전", "diagnosis": "진단서", "receipt": "영수증"}
+
+
+def check_scanned_documents(patient_id: int) -> str:
+    """환자 본인이 보관 중인 스캔 문서(처방전/진단서/영수증)를 문서종류별 건수로 확인합니다.
+    check_medical_records와 동일한 이유로, 문서 원문(OCR로 추출된 텍스트)은 이 도구가 직접
+    읽어 답하지 않고 홈페이지의 진료기록 페이지로 안내한다 - 영수증/처방전 내용처럼 민감할 수
+    있는 원문을 챗봇 대화(LLM 프롬프트/응답)에 노출시키지 않기 위함.
+    patient_id는 호출부(run_agent)에서 세션값만 전달하므로, 다른 환자의 문서를 조회할 수 없다."""
+    if not patient_id:
+        return "환자 식별 정보를 확인할 수 없어 문서를 조회할 수 없습니다."
+
+    try:
+        conn = get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT document_type, COUNT(*) AS cnt FROM scanned_documents "
+                "WHERE patient_id = %s GROUP BY document_type",
+                (patient_id,),
+            )
+            rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return "조회된 문서(처방전/진단서/영수증)가 없습니다."
+
+        lines = ["보관 중인 문서 현황입니다:"]
+        for row in rows:
+            label = DOCUMENT_TYPE_LABELS.get(row["document_type"], row["document_type"])
+            lines.append(f"- {label}: {row['cnt']}건")
+        lines.append("자세한 내역은 다음 링크에서 확인하실 수 있습니다.\n[진료 기록 바로가기](/records.html)")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"문서 조회 중 오류가 발생했습니다: {str(e)}"
