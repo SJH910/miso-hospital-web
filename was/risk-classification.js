@@ -10,6 +10,11 @@ const RISK_LEVELS = {
   login_anomaly_admin_new_ip: "high",
   login_anomaly_admin_new_location: "high",
   totp_verify_fail: "high",
+  // TOTP 해제는 관리자 계정의 "마지막 방어선"을 없애는 방향의 조작이라 totp_enrolled/
+  // verify_success(보호를 추가/사용하는 동작, low)와 묶으면 안 됨 - 세션이 탈취된 공격자가
+  // 신규 위치 로그인 시 코드 요구를 피하려고 제일 먼저 시도할 법한 조치이기도 하고, 드물게만
+  // 발생하는 이벤트라 high로 잡아도 알림 피로(노이즈)가 거의 없음.
+  totp_disabled: "high",
 
   // 중(MEDIUM) - 자동화된 공격 패턴일 가능성이 있으나, 특정 고위험 계정으로 한정되지는 않음.
   // 계정 역할 변경은 그 자체는 정상 운영 행위이지만 권한 상승을 동반할 수 있어 상시 관찰 대상으로 분류.
@@ -23,7 +28,6 @@ const RISK_LEVELS = {
   login_fail: "low",
   totp_verify_success: "low",
   totp_enrolled: "low",
-  totp_disabled: "low",
   patient_register: "low",
 };
 
