@@ -206,6 +206,19 @@ router.get("/", requirePermission("documents:view"), ...);
 
 ---
 
+## 위험 로그 등급 분류 · 마스킹 (2026-09-10)
+
+로그인 이상탐지(`ANOMALY_DETECTION.md`)와 챗봇 도구 호출 감사 로그, 두 파이프라인이 남기는 이벤트에 위험도(상/중/하) 등급을 매기고, 로그 안의 아이디(username)를 부분 마스킹 처리했습니다. 설계 배경·위협 모델은 `SECURITY_THREAT_MODEL.md`, 등급 기준표·마스킹 정책·재현 절차는 `RISK_DETECTION_GUIDE.md`에 정리되어 있습니다.
+
+| | 내용 |
+|---|---|
+| 신규 파일 | `was/risk-classification.js`, `chatbot-service/audit-agent/risk_classification.py`, `SECURITY_THREAT_MODEL.md`, `RISK_DETECTION_GUIDE.md` |
+| 수정 파일 | `was/audit.js`(기록 시점에 등급 분류·마스킹 적용), `was/routes/auditLog.js`(`risk_level` 응답 포함, `?risk=` 필터), `db/init.sql`(`audit_log.risk_level` 컬럼 추가 — **재시딩 필요**), `chatbot-service/audit-agent/engine.py`(마스킹 다음 단계로 등급 분류 수행) |
+| 핵심 설계 | 등급은 **탐지 시점에** 확정해 저장(사후 재분류 아님). 챗봇 쪽은 악성 의도(프롬프트 인젝션 등)가 탐지되면 원래 action의 등급과 무관하게 "상"으로 강제 승격. 매핑에 없는 신규 이벤트는 기본값을 "하"가 아니라 "중"으로 두어 조용히 저위험 취급되는 것을 방지 |
+| 마스킹 범위 | 아이디만 부분 마스킹(`admin` → `adm**`), IP는 침해 대응에 필요해 그대로 유지. 기존 로그는 소급 마스킹하지 않음(챗봇 JSONL은 해시체인 구조상 과거 레코드 수정이 원천적으로 불가) |
+
+---
+
 ## 확정 필요 / 확인 필요 사항 (2026-09-04 기준)
 
 

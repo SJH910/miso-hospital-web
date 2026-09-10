@@ -582,6 +582,86 @@ body.landing-page {
     background: var(--mint);
 }
 
+/* admin-reservations.html - 상태별로 행 자체를 다르게 칠해서 승인 대기/확정/취소를 한눈에 구분.
+   호버 배경(위 규칙)보다 나중에 와야 우선순위가 밀리지 않음. */
+.board-table tbody tr.status-row--requested {
+    background: #fff8e6;
+}
+.board-table tbody tr.status-row--requested:hover {
+    background: #fef0cc;
+}
+.board-table tbody tr.status-row--confirmed {
+    background: #f0f9f4;
+}
+.board-table tbody tr.status-row--confirmed:hover {
+    background: #e2f4e9;
+}
+.board-table tbody tr.status-row--cancelled {
+    background: #f7f7f8;
+    color: var(--text-muted);
+}
+.board-table tbody tr.status-row--cancelled td {
+    text-decoration: line-through;
+    text-decoration-color: #c7cdd4;
+}
+.board-table tbody tr.status-row--cancelled td.col-no-strike {
+    text-decoration: none;
+}
+
+.status-pill {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 3px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.status-pill--requested {
+    background: #ffe8a3;
+    color: #7a5b00;
+}
+.status-pill--confirmed {
+    background: #cdeedd;
+    color: #146c43;
+}
+.status-pill--cancelled {
+    background: #e5e7eb;
+    color: #667085;
+}
+
+.btn-action {
+    width: 88px;
+    text-align: center;
+    padding: 6px 0;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+.btn-action + .btn-action {
+    margin-left: 6px;
+}
+.btn-action:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+.btn-action--confirm {
+    background: var(--accent);
+    color: #fff;
+}
+.btn-action--confirm:hover:not(:disabled) {
+    background: #257e70;
+}
+.btn-action--cancel {
+    background: #fff;
+    color: #b3261e;
+    border-color: #f0c4c0;
+}
+.btn-action--cancel:hover:not(:disabled) {
+    background: #fdf1f0;
+}
+
 .board-table a {
     color: var(--navy);
     text-decoration: none;

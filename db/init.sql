@@ -166,6 +166,8 @@ CREATE TABLE medical_records (
 );
 
 -- 감사 로그 (RBAC-Plan.md "6단계" 참고). actor_id는 로그인 실패처럼 행위자를 특정 못 하면 NULL 허용.
+-- risk_level: was/risk-classification.js가 기록 시점에 분류해 채움 (재분류 아님 - 탐지 당시 판단을 보존).
+-- 자세한 분류 기준은 SECURITY_THREAT_MODEL.md 참고.
 CREATE TABLE audit_log (
     id INT AUTO_INCREMENT PRIMARY KEY,
     actor_id INT NULL,
@@ -173,6 +175,7 @@ CREATE TABLE audit_log (
     target_type VARCHAR(50) NULL,
     target_id INT NULL,
     detail JSON NULL,
+    risk_level ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'low',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (actor_id) REFERENCES patients(id)
 );
