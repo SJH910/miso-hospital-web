@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026-09-10 보안 감사 기능 업데이트 보고서</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --surface-2: #f1f3f6;
+    --border: #e2e5ea;
+    --text: #1a1d23;
+    --text-muted: #5b6270;
+    --accent: #2f6feb;
+    --accent-soft: #eaf1ff;
+    --critical: #c0202e;
+    --critical-bg: #fdecee;
+    --high: #b8590a;
+    --high-bg: #fff2e2;
+    --medium: #8a6d00;
+    --medium-bg: #fff8dc;
+    --low: #1f7a4d;
+    --low-bg: #e8f7ef;
+    --code-bg: #1e2128;
+    --code-text: #e6e9ef;
+    --code-added: #2e7d4f;
+    --code-added-bg: #103820;
+    --shadow: 0 1px 2px rgba(20, 24, 32, 0.06), 0 8px 24px rgba(20, 24, 32, 0.06);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --surface: #1b1e24;
+      --surface-2: #22262e;
+      --border: #30343d;
+      --text: #e9ebf0;
+      --text-muted: #9aa1af;
+      --accent: #6ea1ff;
+      --accent-soft: #1c2a45;
+      --critical: #ff6b74;
+      --critical-bg: #3a1a1f;
+      --high: #ffab5c;
+      --high-bg: #3a2712;
+      --medium: #f0d264;
+      --medium-bg: #35300f;
+      --low: #6fdba0;
+      --low-bg: #12301f;
+      --code-bg: #0e1013;
+      --code-text: #d7dbe2;
+      --code-added: #7fdf9f;
+      --code-added-bg: #123321;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+                 "Malgun Gothic", system-ui, sans-serif;
+    line-height: 1.7;
+    padding-block: 40px;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding-inline: 20px;
+  }
+
+  header.hero {
+    background: linear-gradient(135deg, var(--accent) 0%, #6a4ce6 100%);
+    color: #fff;
+    border-radius: 16px;
+    padding: 36px 32px;
+    margin-bottom: 32px;
+    box-shadow: var(--shadow);
+  }
+  header.hero .eyebrow {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.85;
+    margin-bottom: 10px;
+  }
+  header.hero h1 {
+    margin: 0 0 12px;
+    font-size: clamp(22px, 4vw, 30px);
+    line-height: 1.35;
+  }
+  header.hero p {
+    margin: 0;
+    opacity: 0.92;
+    font-size: 15px;
+  }
+  .badges {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+  .badge {
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.35);
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 30px;
+    margin-bottom: 22px;
+    box-shadow: var(--shadow);
+  }
+
+  h2 {
+    font-size: 20px;
+    margin: 0 0 18px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--accent-soft);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 700;
+    flex: none;
+  }
+  h3 {
+    font-size: 16px;
+    margin: 26px 0 12px;
+    color: var(--text);
+  }
+  h3:first-of-type { margin-top: 4px; }
+
+  p { margin: 0 0 14px; color: var(--text); }
+  .muted { color: var(--text-muted); }
+
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin-bottom: 6px; }
+
+  strong { color: var(--text); }
+
+  code {
+    font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+    background: var(--surface-2);
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-size: 0.88em;
+    color: var(--accent);
+    word-break: break-word;
+  }
+
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 18px 20px;
+    border-radius: 10px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 14px 0;
+  }
+  pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+  }
+  .added { color: var(--code-added); background: var(--code-added-bg); display: block; margin: 0 -20px; padding: 0 20px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 20px;
+    font-size: 14px;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  thead th {
+    background: var(--surface-2);
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 700;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--text);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-2); }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .pill.critical { color: var(--critical); background: var(--critical-bg); }
+  .pill.high     { color: var(--high); background: var(--high-bg); }
+  .pill.medium   { color: var(--medium); background: var(--medium-bg); }
+  .pill.low      { color: var(--low); background: var(--low-bg); }
+
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin: 16px 0;
+    font-size: 14.5px;
+  }
+  .callout strong { color: var(--accent); }
+
+  .analogy {
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-size: 14.5px;
+    color: var(--text-muted);
+    margin-top: 10px;
+  }
+
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: stretch;
+    margin: 16px 0 6px;
+  }
+  .flow .step {
+    flex: 1 1 150px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+  .flow .step .n {
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .flow .step.new {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .flow .arrow {
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 18px;
+    padding: 0 2px;
+  }
+
+  .filelist {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .filelist .file {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .filelist .tag {
+    flex: none;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+  .tag.new { background: var(--low-bg); color: var(--low); }
+  .tag.mod { background: var(--high-bg); color: var(--high); }
+
+  footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    padding: 20px 0 4px;
+  }
+
+  @media (max-width: 600px) {
+    section { padding: 22px 18px; }
+    header.hero { padding: 26px 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">Miso Hospital · 챗봇 보안 감사</div>
+    <h1>2026-09-10 보안 감사 기능 업데이트 보고서</h1>
+    <p>요구사항 7번(모니터링 대시보드/리포트)과 8번(감사 기준 정의) 구현 결과 정리</p>
+    <div class="badges">
+      <span class="badge">📋 감사 기준 문서화</span>
+      <span class="badge">🖥️ CLI 대시보드</span>
+      <span class="badge">📄 CSV 리포트</span>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="num">1</span>개요 및 작업 목표</h2>
+
+    <h3>무엇이 문제였나</h3>
+    <p>며칠 전 백엔드 팀이 로그인 이상 탐지 기능(<code>login_anomaly_*</code>)과 TOTP 2차 인증 관련 로그(<code>totp_*</code>)를 <code>audit_log</code> 테이블에 남기도록 업데이트했다. 챗봇 쪽에도 프롬프트 인젝션을 탐지하면 <code>MALICIOUS_INTENT_DETECTED</code> 플래그를 남기는 기능이 이미 있었다. 그리고 최근 점검에서 <code>patients.totp_secret</code>이 DB에 평문으로 저장되어 있다는 것도 확인됐다.</p>
+    <p>즉 "위험한 일이 벌어지면 로그는 남는다"까지는 되어 있었다. 하지만 다음 두 가지가 없었다.</p>
+    <ol>
+      <li><strong>기준</strong>: 이 로그들 중에 뭐가 진짜 위험하고, 뭐가 그냥 참고용인지 구분할 기준이 없었다. 사람이 로그를 하나하나 다 읽어야만 판단할 수 있는 상태였다.</li>
+      <li><strong>도구</strong>: 설령 기준이 있어도, 그 기준을 실제로 로그에 적용해서 "지금 몇 건이 위험하고 어떤 건지" 한눈에 보여주는 도구가 없었다. 운영자가 매번 DB를 직접 쿼리해야 했다.</li>
+    </ol>
+
+    <h3>오늘 한 일</h3>
+    <table>
+      <thead><tr><th style="width:38%">산출물</th><th>역할</th></tr></thead>
+      <tbody>
+        <tr><td><code>SECURITY_AUDIT_CRITERIA.md</code><br><span class="muted">(신규 문서)</span></td><td>"이 로그는 Critical, 저 로그는 Low" 를 정하는 <strong>기준표</strong></td></tr>
+        <tr><td><code>chatbot-service/log_audit_tool.py</code><br><span class="muted">(기존 파일에 기능 추가)</span></td><td>그 기준표를 코드로 그대로 옮겨서, 실제 로그에 적용해 <strong>CLI 리포트/CSV</strong>로 뽑아주는 도구</td></tr>
+      </tbody>
+    </table>
+
+    <div class="analogy">
+      💡 비유하자면, <code>SECURITY_AUDIT_CRITERIA.md</code>는 "이런 상황이면 응급실 몇 단계"를 정하는 <strong>트리아지(분류) 매뉴얼</strong>이고, <code>log_audit_tool.py</code>에 추가된 기능은 그 매뉴얼대로 환자(로그)를 실제로 분류해서 "응급 환자 3명, 준응급 5명" 하고 알려주는 <strong>자동 트리아지 시스템</strong>이다.
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">2</span>신규 문서: SECURITY_AUDIT_CRITERIA.md</h2>
+
+    <h3>2-1. 5W1H 분류 기준</h3>
+    <p>로그 한 줄을 "누가, 언제, 무엇을, 어디서, 왜, 어떻게"라는 6가지 질문으로 읽도록 정리했다. 이렇게 정리해두면 어떤 로그를 봐도 항상 같은 순서로 파악할 수 있다.</p>
+    <table>
+      <thead><tr><th>질문</th><th>의미</th><th>로그에서 실제로 보는 위치</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Who</strong> (누가)</td><td>누구의 행동인가</td><td><code>actor_id</code> (없으면 시스템/비로그인 행위)</td></tr>
+        <tr><td><strong>When</strong> (언제)</td><td>언제 발생했나</td><td><code>timestamp</code></td></tr>
+        <tr><td><strong>What</strong> (무엇을)</td><td>어떤 이벤트인가</td><td>로그인/인증 계열은 <code>action</code> 값, 챗봇 대화는 실제 메시지 내용</td></tr>
+        <tr><td><strong>Where</strong> (어디서)</td><td>어느 시스템에서 났나</td><td>백엔드 인증(<code>mysql_audit</code>) / 챗봇 도구 호출(<code>audit_jsonl</code>) / 챗봇 대화(<code>chatbot_sqlite</code>) / 진료 채팅(<code>mysql_chat</code>)</td></tr>
+        <tr><td><strong>Why</strong> (왜 위험한가)</td><td>무엇을 지키려는 탐지인가</td><td>계정 보호 / 시스템(프롬프트) 보호 / 개인정보 보호 중 하나</td></tr>
+        <tr><td><strong>How</strong> (어떻게 탐지했나)</td><td>탐지 방식</td><td>백엔드 카운터, 키워드 매칭, 마스킹 전후 비교, 또는 사람이 직접 확인한 정적 점검</td></tr>
+      </tbody>
+    </table>
+
+    <h3>2-2. 위험도 매핑</h3>
+    <p>가장 핵심적인 부분이다. 아래 표대로 등급을 정했다.</p>
+    <table>
+      <thead><tr><th style="width:14%">등급</th><th>해당 이벤트</th><th>왜 이 등급인가</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="pill critical">Critical</span></td>
+          <td>관리자 계정 반복 실패, 관리자 신규 IP/지역 로그인, 프롬프트 인젝션 탐지, DB 평문 시크릿(<code>totp_secret</code>)</td>
+          <td>고권한 계정 침해로 이어지거나, 이미 뚫렸을 가능성이 있거나, 구조적으로 큰 피해로 번질 수 있음</td>
+        </tr>
+        <tr>
+          <td><span class="pill high">High</span></td>
+          <td>일반 계정 반복 실패, IP 이상 빈도, TOTP 인증 실패, TOTP 임의 해제, 마스킹 안 된 PII 발견</td>
+          <td>공격이 진행 중이거나 개인정보가 그대로 노출된 상태 — 오늘 안에는 확인이 필요함</td>
+        </tr>
+        <tr>
+          <td><span class="pill medium">Medium</span></td>
+          <td>비정상적으로 긴 입력값(200자 초과)</td>
+          <td>의심스럽지만 실제 차단·피해로 이어지진 않음 — 추세만 관찰</td>
+        </tr>
+        <tr>
+          <td><span class="pill low">Low</span></td>
+          <td>TOTP 등록, TOTP 인증 성공</td>
+          <td>정상적인 보안 행동. 기록만 해두면 됨</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted">한 로그가 여러 조건에 동시에 걸리면(예: 긴 입력값인데 그 안에 개인정보도 섞여 있는 경우) <strong>가장 높은 등급</strong>을 최종 등급으로 삼는다. "낮은 등급으로 묻히는" 상황을 막기 위함이다.</p>
+
+    <h3>2-3. 등급별 대응 가이드</h3>
+    <table>
+      <thead><tr><th style="width:14%">등급</th><th style="width:20%">조치 시한</th><th>무엇을 해야 하나</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill critical">Critical</span></td><td>즉시</td><td>계정 상태 확인, 필요하면 계정 잠금/세션 무효화, 담당자에게 바로 공유</td></tr>
+        <tr><td><span class="pill high">High</span></td><td>당일 내</td><td>같은 계정/IP의 다른 로그와 이어 붙여서 공격인지 오탐인지 판단</td></tr>
+        <tr><td><span class="pill medium">Medium</span></td><td>주간 리뷰</td><td>빈도가 늘면 High로 재분류 검토</td></tr>
+        <tr><td><span class="pill low">Low</span></td><td>기록만</td><td>정상 동작 확인용, 별도 조치 없음</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="num">3</span>코드 변경사항 분석: log_audit_tool.py</h2>
+    <p>기존에 이 파일은 4개 저장소(MySQL <code>audit_log</code>, 암호화된 JSONL, SQLite 챗봇 로그, MySQL 채팅)에서 로그를 읽어 <strong>같은 모양(공통 스키마)</strong>으로 바꿔주는 일과, 마스킹 안 된 개인정보를 찾아주는 일(<code>scan_for_pii</code>)까지만 하고 있었다. 오늘은 여기에 "위험도 판정 → 리포트 생성" 단계를 추가했다.</p>
+
+    <h3>3-1. PII 스캔 로직을 _pii_findings_for_record로 분리한 이유</h3>
+    <p>기존 코드는 <code>scan_for_pii</code> 함수 하나가 "여러 레코드를 순회하면서 + 각 레코드의 필드를 검사하는" 두 가지 일을 한 번에 하고 있었다.</p>
+    <pre><code># 기존
+def scan_for_pii(records):
+    findings = []
+    for record in records:
+        for field, value in record.get("text_fields", {}).items():
+            ...  # 개별 레코드 검사 로직
+    return findings</code></pre>
+
+    <p>문제는, 새로 만드는 <code>evaluate_severity</code>(로그 1건의 위험도를 판정하는 함수)도 "이 로그에 마스킹 안 된 개인정보가 있는가"를 검사해야 한다는 점이었다. 이 로직을 새로 또 만들면 코드가 중복되고, 나중에 PII 판정 방식이 바뀌면 두 곳을 따로 고쳐야 하는 위험이 생긴다.</p>
+    <p>그래서 "레코드 1건을 검사하는 부분"만 <code>_pii_findings_for_record(record)</code>라는 별도 함수로 떼어냈다.</p>
+    <pre><code>&#35; 변경 후
+def _pii_findings_for_record(record):
+    findings = []
+    for field, value in record.get("text_fields", {}).items():
+        ...  &#35; 개별 레코드 검사 로직 (내용은 그대로 옮겨옴)
+    return findings
+
+<span class="added">def scan_for_pii(records):
+    findings = []
+    for record in records:
+        findings.extend(_pii_findings_for_record(record))
+    return findings</span></code></pre>
+    <div class="callout"><strong>핵심:</strong> <code>scan_for_pii</code>가 여러 레코드를 한 건씩 <code>_pii_findings_for_record</code>에 넘기는 구조로 바뀌었을 뿐, 기존 <code>scan_for_pii</code>를 쓰던 곳(예: <code>main()</code>)의 동작은 전혀 바뀌지 않는다. 이제 <code>evaluate_severity</code>도 같은 함수를 호출해서 PII를 검사하므로, 판정 기준이 어긋날 일이 없다.</div>
+
+    <h3>3-2. 프롬프트 인젝션 플래그(malicious_intent_detected) 누락 패치</h3>
+    <p>조사 과정에서 발견한 기존 버그성 공백이다. 챗봇의 프롬프트 인젝션 탐지 로직(<code>audit-agent/masking.py</code>)은 이미 잘 동작하고 있었다. 의심스러운 키워드(예: "이전 지시 무시")를 발견하면 로그 데이터 안에 <code>MALICIOUS_INTENT_DETECTED: True</code>라는 표시를 남긴다.</p>
+    <p>문제는, 이 표시가 암호화되어 JSONL 파일에 저장된 뒤 <code>log_audit_tool.py</code>가 그걸 복호화해서 다시 꺼낼 때 <strong>이 표시를 쏙 빼놓고 있었다</strong>는 점이다. 즉 탐지는 되고 있는데, 이 감사 도구 입장에서는 그 탐지 결과가 안 보이는 상태였다.</p>
+    <pre><code>&#35; read_audit_jsonl() 안, 복호화된 payload에서 text_fields를 만드는 부분
+"text_fields": {
+    "action": raw.get("action"),
+    "input": json.dumps(input_data, ensure_ascii=False),
+    "output": str(payload.get("output")) if isinstance(payload, dict) else str(payload),
+<span class="added">    &#35; 아래 한 줄 추가 — 이미 계산되어 있던 플래그를 그대로 꺼내오기만 함
+    "malicious_intent_detected": bool(payload.get("MALICIOUS_INTENT_DETECTED", False))
+    if isinstance(payload, dict) else False,</span>
+},</code></pre>
+    <div class="callout"><strong>탐지 로직 자체는 전혀 건드리지 않았다.</strong> 이미 계산되어 있던 값을 한 줄 추가해서 밖으로 흘려보내기만 했을 뿐이다. 이 한 줄이 없었다면, 아래 3-3의 위험도 판정 엔진이 프롬프트 인젝션을 영원히 못 잡는 구조였다.</div>
+
+    <h3>3-3. 위험도 판별 엔진 evaluate_severity(log_record)</h3>
+    <p>로그 1건을 입력받아 "이 로그가 몇 등급인지"를 판정해서 돌려주는 함수다. <code>SECURITY_AUDIT_CRITERIA.md</code>의 표를 그대로 코드(<code>SEVERITY_RULES</code>라는 딕셔너리)로 옮겨두고, 다음 3가지를 순서대로 확인한다.</p>
+    <ol>
+      <li><strong>로그인/인증 이상 여부</strong>: <code>mysql_audit</code> 소스의 로그라면 <code>action</code> 값(<code>login_anomaly_admin_new_ip</code> 등)을 <code>SEVERITY_RULES</code>에서 찾아본다.</li>
+      <li><strong>프롬프트 인젝션 여부</strong>: <code>audit_jsonl</code> 소스의 로그라면 방금 패치한 <code>malicious_intent_detected</code> 플래그를 확인한다.</li>
+      <li><strong>개인정보 노출 여부</strong>: 소스에 상관없이 <code>_pii_findings_for_record</code>(3-1에서 분리한 함수)를 호출해 마스킹 안 된 개인정보가 있는지 확인한다.</li>
+    </ol>
+    <p>세 가지 중 하나라도 해당하면 근거로 기록해두고, 여러 개에 동시에 해당하면 그중 <strong>가장 높은 등급</strong>을 최종 결과로 낸다. 즉 이 함수는 "이 로그 1건에 대한 1차 진단서"를 만들어주는 역할이다.</p>
+    <pre><code>결과 예시 = {
+    "source": "mysql_audit",
+    "record_id": 482,
+    "timestamp": "2026-09-10 09:12:03",
+    "actor_id": 17,
+    "severity": "CRITICAL",
+    "matched": [
+        {"category": "관리자 신규 IP 로그인", "severity": "CRITICAL",
+         "reason": "이미 비밀번호를 통과해 로그인에 성공 — 계정 탈취 가능성"}
+    ],
+}</code></pre>
+    <p>또한 DB 평문 시크릿(<code>totp_secret</code>)처럼 애초에 로그로는 남지 않는 "구조적 문제"는 별도로 <code>STATIC_FINDINGS</code>라는 고정 목록에 담아뒀다. 로그를 아무리 뒤져도 안 나오는 문제이기 때문에, 코드가 자동으로 찾는 게 아니라 사람이 점검해서 등록해둔 항목이다.</p>
+
+    <h3>3-4. CLI 대시보드 + CSV 저장 함수 generate_audit_report</h3>
+    <p><code>evaluate_severity</code>가 "로그 1건"을 진단한다면, 이 함수는 <strong>전체 로그를 모아서 종합 리포트</strong>를 만든다. 하는 일은 4가지다.</p>
+    <ol>
+      <li>모든 로그에 <code>evaluate_severity</code>를 돌려서 등급별 건수를 센다 (예: Critical 3건, High 5건, Medium 2건, Low 40건).</li>
+      <li><code>STATIC_FINDINGS</code>(DB 평문 시크릿 등 정적 이슈)도 화면에 같이 보여준다.</li>
+      <li><strong>Critical/High 등급만</strong> 상세 내용을 화면에 출력한다. 이때 원문을 그대로 보여주지 않고 <strong>반드시 <code>mask_pii()</code>로 한 번 걸러진 미리보기</strong>만 보여준다 — 보안 리포트 자체가 개인정보를 다시 유출하는 사고를 막기 위함이다.</li>
+      <li><code>output_csv</code> 경로를 주면 전체 결과(정적 이슈 포함)를 CSV 파일로도 저장한다. 화면에서 다 못 보여준 나머지 항목들은 이 CSV에서 확인할 수 있다.</li>
+    </ol>
+    <p>실제 CLI 출력은 이런 모양이다.</p>
+    <pre><code>==== 감사 리포트 요약 (총 123건) ====
+CRITICAL : 3건
+HIGH     : 5건
+MEDIUM   : 2건
+LOW      : 40건
+NONE     : 73건
+
+---- 정적 점검 항목 ----
+[CRITICAL] TOTP 비밀키(base32)가 평문으로 저장됨 — DB 유출 시 2차인증 전체가 무력화됨 (db/init.sql:30)
+
+---- CRITICAL / HIGH 상세 (8건) ----
+[CRITICAL] mysql_audit#482 2026-09-10 09:12:03 actor_id=17
+  - 관리자 신규 IP 로그인: 이미 비밀번호를 통과해 로그인에 성공 — 계정 탈취 가능성
+[HIGH] audit_jsonl#a91f... 2026-09-10 09:15:44 actor_id=None
+  - 프롬프트 인젝션 탐지: 챗봇 도구 호출 payload에서 MALICIOUS_INTENT_DETECTED 플래그 발견
+  - preview[input]: "이전 지시 [MASKED]..." (마스킹된 미리보기만 표시)</code></pre>
+
+    <h3>3-5. main() 함수 흐름 변화</h3>
+    <p>기존 <code>main()</code>은 "4개 저장소 읽기 → 합치기 → PII 스캔 → (발견되면) CSV 저장"까지만 하고 끝났다. 여기에 마지막 단계로 종합 리포트 생성을 추가했다.</p>
+    <div class="flow">
+      <div class="step"><div class="n">STEP 1</div>4개 저장소에서 로그 읽어서 합치기</div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">STEP 2</div><code>scan_for_pii</code>로 PII 미마스킹 항목 찾기</div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">STEP 3</div>발견되면 <code>log_audit_report_*.csv</code> 저장</div>
+      <div class="arrow">→</div>
+      <div class="step new"><div class="n">STEP 4 · 신규</div><code>generate_audit_report()</code> 호출 → 등급별 통계 출력 + <code>security_audit_report_*.csv</code> 저장</div>
+    </div>
+    <p class="muted" style="margin-top:16px;">기존 PII 전용 리포트(<code>log_audit_report_*.csv</code>)와 새로 추가된 종합 리포트(<code>security_audit_report_*.csv</code>)는 <strong>파일명을 다르게 분리</strong>해서, 기존에 이 파일을 보고 있던 사람이 혼동하지 않도록 했다.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">4</span>기대 효과</h2>
+    <ul>
+      <li><strong>운영자가 매번 DB를 직접 쿼리할 필요가 없어진다.</strong> <code>python3 log_audit_tool.py</code> 한 번 실행하면 4개 저장소의 로그가 전부 취합되어 위험도별로 분류된 상태로 화면에 뜬다.</li>
+      <li><strong>"지금 당장 봐야 하는 것"과 "나중에 봐도 되는 것"이 구분된다.</strong> Critical/High만 상세히 보여주므로, 매일 쌓이는 수백 건의 로그를 다 읽지 않아도 진짜 위협부터 확인할 수 있다.</li>
+      <li><strong>개인정보 노출 없이 리포트를 볼 수 있다.</strong> 상세 미리보기가 전부 <code>mask_pii()</code>를 거치기 때문에, 보안 점검용 리포트가 또 다른 개인정보 유출 경로가 되는 일을 막는다.</li>
+      <li><strong>감사 기준이 문서화되어 팀 전체가 같은 기준으로 판단할 수 있다.</strong> <code>SECURITY_AUDIT_CRITERIA.md</code>가 있어서, 누가 리포트를 보더라도 "왜 이게 Critical인지"를 코드가 아니라 문서로 확인할 수 있다.</li>
+      <li><strong>DB 평문 시크릿 같은, 로그로는 절대 안 잡히는 구조적 문제도 같은 리포트에서 같이 확인된다.</strong> <code>STATIC_FINDINGS</code> 덕분에 "로그 기반 탐지"와 "코드/설계 점검"을 하나의 창구로 합쳐서 볼 수 있다.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">5</span>파일 변경 내역 &amp; 실행 방법</h2>
+
+    <h3>5-1. 새롭게 추가된 파일 (신규)</h3>
+    <div class="filelist">
+      <div class="file">
+        <span class="tag new">신규</span>
+        <div><code>SECURITY_AUDIT_CRITERIA.md</code><br><span class="muted">5W1H 분류 기준 + 위험도(Critical/High/Medium/Low) 매핑 표 + 등급별 대응 가이드 — 요구사항 8번 산출물</span></div>
+      </div>
+      <div class="file">
+        <span class="tag new">신규</span>
+        <div><code>0910_Audit_Update_Report.md</code><br><span class="muted">본 보고서의 마크다운 버전</span></div>
+      </div>
+      <div class="file">
+        <span class="tag new">신규</span>
+        <div><code>0910_Audit_Update_Report.html</code><br><span class="muted">본 보고서의 HTML(브라우저 열람용) 버전</span></div>
+      </div>
+    </div>
+
+    <h3>5-2. 기존 파일에서 변경된 파일 (수정)</h3>
+    <div class="filelist">
+      <div class="file">
+        <span class="tag mod">수정</span>
+        <div>
+          <code>chatbot-service/log_audit_tool.py</code><br>
+          <span class="muted">원래 상태: 4개 저장소 파싱(1단계) + PII 미마스킹 스캔·CSV 저장(3단계)까지만 구현되어 있던 상태</span>
+          <ul style="margin-top:8px;">
+            <li><code>read_audit_jsonl()</code>에 <code>malicious_intent_detected</code> 플래그 노출 1줄 패치</li>
+            <li><code>scan_for_pii()</code> 내부 로직을 <code>_pii_findings_for_record()</code>로 분리 (기존 동작 불변)</li>
+            <li><code>SEVERITY_RULES</code>/<code>STATIC_FINDINGS</code>/<code>evaluate_severity()</code>/<code>generate_audit_report()</code> 신규 추가 — 요구사항 7·8번 산출물</li>
+            <li><code>main()</code>에 종합 리포트 생성 단계 추가</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:12px;">이번 작업에서는 기존 파일 중 <code>chatbot-service/log_audit_tool.py</code> <strong>한 곳만</strong> 수정했고, 다른 기존 파일(<code>pii_masking.py</code>, <code>audit-agent/masking.py</code>, <code>db/init.sql</code> 등)은 조사·참고만 했을 뿐 변경하지 않았다.</p>
+
+    <h3>실행 방법</h3>
+    <pre><code>cd chatbot-service
+python3 log_audit_tool.py</code></pre>
+    <p class="muted">실행하면 콘솔에 요약 리포트가 출력되고, <code>chatbot-service/</code> 폴더 안에 <code>security_audit_report_YYYYMMDD_HHMMSS.csv</code> 파일이 생성된다.</p>
+  </section>
+
+  <footer>miso-hospital 챗봇 보안 감사 · 2026-09-10</footer>
+</div>
+</body>
+</html>
