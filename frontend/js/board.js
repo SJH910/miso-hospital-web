@@ -31,10 +31,11 @@ function renderPost(post, index) {
 
     const statusTd = document.createElement('td');
     statusTd.className = 'col-date';
+    const hasAnswer = (post.answers || []).length > 0;
     const badge = document.createElement('span');
     badge.className = 'answer-badge';
-    badge.textContent = post.answer ? '답변완료' : '답변대기';
-    if (!post.answer) badge.style.cssText = 'background:#eef0f2; color:var(--text-muted);';
+    badge.textContent = hasAnswer ? '답변완료' : '답변대기';
+    if (!hasAnswer) badge.style.cssText = 'background:#eef0f2; color:var(--text-muted);';
     statusTd.appendChild(badge);
 
     tr.append(numTd, titleTd, dateTd, statusTd);

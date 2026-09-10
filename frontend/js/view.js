@@ -51,21 +51,23 @@ function renderDetail(posts) {
 
         wrapper.append(meta, title, content);
 
-        if (p.answer) {
+        // [2026-09-10] 답변은 이력 전체(p.answers, 오래된 순)를 보여준다 — 재답변이 이전
+        // 답변을 덮어쓰지 않는 구조로 바뀌어서, 환자도 지난 답변을 그대로 다 볼 수 있어야 함.
+        (p.answers || []).forEach((a) => {
             const answerBox = document.createElement('div');
             answerBox.className = 'answer-box';
 
             const label = document.createElement('p');
             label.className = 'answer-box__label';
-            label.textContent = `병원 답변 (${formatDate(p.answered_at)})`;
+            label.textContent = `병원 답변 (${formatDate(a.created_at)})`;
 
             const text = document.createElement('p');
             text.className = 'answer-box__text';
-            text.textContent = p.answer;
+            text.textContent = a.answer;
 
             answerBox.append(label, text);
             wrapper.appendChild(answerBox);
-        }
+        });
 
         wrapper.appendChild(document.createElement('hr'));
         detail.appendChild(wrapper);

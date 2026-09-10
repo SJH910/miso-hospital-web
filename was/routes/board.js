@@ -7,6 +7,32 @@ const { hasPermission } = requirePermission;
 
 const router = express.Router();
 
+// post_id 목록에 대한 답변 이력을 한 번에 조회해 { [post_id]: [answer, ...] } 형태로 묶는다.
+// N+1 쿼리를 피하려고 답변 전체를 한 번에 가져온 뒤 여기서 그룹핑한다(게시글 수가 아주 많지
+// 않은 문의게시판 특성상 부담 없는 수준).
+async function attachAnswers(posts) {
+  if (posts.length === 0) return posts;
+  const postIds = posts.map((p) => p.id);
+  const [answerRows] = await pool.query(
+    `SELECT ba.id, ba.post_id, ba.answer, ba.created_at, p.name AS answered_by_name
+     FROM board_answers ba JOIN patients p ON p.id = ba.answered_by
+     WHERE ba.post_id IN (?)
+     ORDER BY ba.id ASC`,
+    [postIds]
+  );
+  const byPostId = {};
+  for (const row of answerRows) {
+    if (!byPostId[row.post_id]) byPostId[row.post_id] = [];
+    byPostId[row.post_id].push({
+      id: row.id,
+      answer: row.answer,
+      answered_by_name: row.answered_by_name,
+      created_at: row.created_at,
+    });
+  }
+  return posts.map((p) => ({ ...p, answers: byPostId[p.id] || [] }));
+}
+
 // board:reply(staff/admin)가 있으면 답변 대상을 찾기 위해 전체 문의를 보고,
 // 없으면(patient, board:read) 본인 문의만 본다.
 router.get("/", async (req, res) => {
@@ -16,19 +42,19 @@ router.get("/", async (req, res) => {
 
   if (await hasPermission(req.session.role, "board:reply")) {
     const [rows] = await pool.query(
-      `SELECT bp.id, bp.patient_id, p.name AS patient_name, bp.title, bp.content, bp.answer, bp.answered_at, bp.created_at
+      `SELECT bp.id, bp.patient_id, p.name AS patient_name, bp.title, bp.content, bp.created_at
        FROM board_posts bp JOIN patients p ON p.id = bp.patient_id
        ORDER BY bp.id DESC`
     );
-    return res.json(rows);
+    return res.json(await attachAnswers(rows));
   }
 
   if (await hasPermission(req.session.role, "board:read")) {
     const [rows] = await pool.query(
-      "SELECT id, patient_id, title, answer, answered_at, created_at FROM board_posts WHERE patient_id = ? ORDER BY id DESC",
+      "SELECT id, patient_id, title, created_at FROM board_posts WHERE patient_id = ? ORDER BY id DESC",
       [req.session.patientId]
     );
-    return res.json(rows);
+    return res.json(await attachAnswers(rows));
   }
 
   return res.status(403).json({ message: "권한이 없습니다." });
@@ -54,21 +80,25 @@ router.post("/", verifyCsrfToken, requirePermission("board:write"), async (req, 
 });
 
 // staff/admin이 문의에 답변을 등록. :id는 board_posts.id (환자별 문의가 아니라 문의 하나 단위).
-router.patch("/:id/answer", verifyCsrfToken, requirePermission("board:reply"), async (req, res) => {
+// [결정 2026-09-10] 답변은 수정/삭제 불가, 추가만 가능 — 그래서 UPDATE가 아니라 항상 INSERT.
+// 같은 문의에 여러 번 호출하면 새 답변이 계속 쌓인다(이력 보존).
+router.post("/:id/answer", verifyCsrfToken, requirePermission("board:reply"), async (req, res) => {
   const { answer } = req.body;
   if (!answer || typeof answer !== "string") {
     return res.status(400).json({ message: "답변 내용을 확인해주세요." });
   }
   const safeAnswer = sanitizeHtml(answer, { allowedTags: [], allowedAttributes: {} });
 
-  const [result] = await pool.query(
-    "UPDATE board_posts SET answer = ?, answered_by = ?, answered_at = NOW() WHERE id = ?",
-    [safeAnswer, req.session.patientId, req.params.id]
-  );
-  if (result.affectedRows === 0) {
+  const [postRows] = await pool.query("SELECT id FROM board_posts WHERE id = ?", [req.params.id]);
+  if (postRows.length === 0) {
     return res.status(404).json({ message: "문의를 찾을 수 없습니다." });
   }
-  res.json({ id: Number(req.params.id), answer: safeAnswer });
+
+  const [result] = await pool.query(
+    "INSERT INTO board_answers (post_id, answered_by, answer) VALUES (?, ?, ?)",
+    [req.params.id, req.session.patientId, safeAnswer]
+  );
+  res.json({ id: result.insertId, post_id: Number(req.params.id), answer: safeAnswer });
 });
 
 // [보안 강화 #3 BOLA/IDOR] URL의 patientId가 세션 소유자와 일치하는지 반드시 검증.
@@ -82,12 +112,12 @@ router.get("/:patientId", requirePermission("board:read"), async (req, res) => {
   }
 
   const [rows] = await pool.query(
-    `SELECT bp.id, bp.patient_id, bp.title, bp.content, bp.answer, bp.answered_at, p.name
+    `SELECT bp.id, bp.patient_id, bp.title, bp.content, p.name
      FROM board_posts bp JOIN patients p ON p.id = bp.patient_id
      WHERE bp.patient_id = ?`,
     [req.params.patientId]
   );
-  res.json(rows);
+  res.json(await attachAnswers(rows));
 });
 
 module.exports = router;

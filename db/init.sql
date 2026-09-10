@@ -13,6 +13,7 @@ DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS medical_records;
 DROP TABLE IF EXISTS reservations;
 DROP TABLE IF EXISTS scanned_documents;
+DROP TABLE IF EXISTS board_answers;
 DROP TABLE IF EXISTS board_posts;
 DROP TABLE IF EXISTS patients;
 DROP TABLE IF EXISTS role_permissions;
@@ -107,11 +108,21 @@ CREATE TABLE board_posts (
     patient_id INT NOT NULL,
     title VARCHAR(200) NOT NULL,
     content TEXT,
-    answer TEXT NULL,               -- staff/admin이 다는 답변 (RBAC-Plan.md "2단계 - 문의 답변" 참고)
-    answered_by INT NULL,           -- 답변한 계정 (patients.id, role='staff'|'admin')
-    answered_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (patient_id) REFERENCES patients(id),
+    FOREIGN KEY (patient_id) REFERENCES patients(id)
+);
+
+-- 문의 답변 (RBAC-Plan.md "2단계 - 문의 답변" 참고). [결정 2026-09-10] 답변을 board_posts에
+-- 컬럼 하나로 두면 재답변 시 UPDATE로 이전 답변이 덮어써져 이력이 안 남는 문제가 있어서,
+-- 답변 하나당 한 행으로 분리 — 한번 쓴 답변은 절대 UPDATE/DELETE하지 않고 항상 INSERT만
+-- 한다(수정 불가, 추가 답변만 가능). post_id 하나에 여러 행(=답변 여러 개)이 쌓이는 구조.
+CREATE TABLE board_answers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    post_id INT NOT NULL,
+    answered_by INT NOT NULL,        -- 답변한 계정 (patients.id, role='staff'|'admin')
+    answer TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES board_posts(id),
     FOREIGN KEY (answered_by) REFERENCES patients(id)
 );
 

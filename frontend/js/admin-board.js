@@ -31,6 +31,9 @@ function formatDate(isoString) {
 }
 
 // [XSS 방지] 서버 값을 조립할 때 innerHTML 대신 DOM API + textContent만 사용.
+// [2026-09-10] 답변은 수정 불가·추가만 가능한 구조로 변경 — post.answer(단일 값) 대신
+// post.answers(배열, board_answers 이력 전체)를 받는다. 기존 답변은 읽기 전용으로 나열하고,
+// 새 답변을 쓸 빈 textarea는 항상 별도로 둔다(기존 답변을 고쳐 쓰는 UI 자체를 없앰).
 function renderInquiryCard(post) {
     const card = document.createElement('div');
     card.className = 'panel inquiry-card';
@@ -48,24 +51,32 @@ function renderInquiryCard(post) {
 
     card.append(meta, title, content);
 
-    if (post.answer) {
+    const answers = post.answers || [];
+    answers.forEach((a) => {
+        const answerBox = document.createElement('div');
+        answerBox.className = 'inquiry-card__answer';
+
         const answeredLabel = document.createElement('p');
         answeredLabel.className = 'inquiry-card__answered-label';
-        answeredLabel.textContent = `답변 완료 (${formatDate(post.answered_at)})`;
-        card.appendChild(answeredLabel);
-    }
+        answeredLabel.textContent = `${a.answered_by_name} · ${formatDate(a.created_at)}`;
+
+        const answerText = document.createElement('p');
+        answerText.textContent = a.answer;
+
+        answerBox.append(answeredLabel, answerText);
+        card.appendChild(answerBox);
+    });
 
     const textarea = document.createElement('textarea');
     textarea.rows = 3;
-    textarea.placeholder = '답변을 입력하세요.';
-    textarea.value = post.answer || '';
+    textarea.placeholder = answers.length ? '추가 답변을 입력하세요.' : '답변을 입력하세요.';
     card.appendChild(textarea);
 
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 'btn-primary';
     saveBtn.style.cssText = 'width:auto; padding:8px 18px; margin-top:10px;';
-    saveBtn.textContent = post.answer ? '답변 수정' : '답변 등록';
+    saveBtn.textContent = answers.length ? '답변 추가' : '답변 등록';
     saveBtn.addEventListener('click', () => submitAnswer(post.id, textarea.value, saveBtn));
     card.appendChild(saveBtn);
 
@@ -90,7 +101,7 @@ async function submitAnswer(id, answer, button) {
     button.disabled = true;
     try {
         const res = await fetch(`${WAS_BASE}/api/board/${id}/answer`, {
-            method: 'PATCH',
+            method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-Token': getCsrfToken(),

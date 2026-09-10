@@ -821,6 +821,19 @@ body.landing-page {
     margin: 12px 0 4px;
 }
 
+/* [2026-09-10] 답변 이력(여러 건) 표시 - admin-board.html */
+.inquiry-card__answer {
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: var(--mint);
+    border-radius: 10px;
+}
+
+.inquiry-card__answer p {
+    white-space: pre-wrap;
+    margin: 0;
+}
+
 .inquiry-card textarea {
     width: 100%;
     padding: 10px;
