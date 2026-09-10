@@ -62,6 +62,10 @@ async function loadScannedDocuments() {
     docs.forEach(renderRow);
 }
 
+// loadDetail을 다시 호출할 때마다 recordDetail.innerHTML을 비우면서 이전 <img>의 blob URL을
+// 회수 안 하면 메모리에 계속 쌓이므로, 직전에 만든 blob URL을 기억해뒀다가 다음 호출 시 해제한다.
+let currentImageObjectUrl = null;
+
 // [보안] URL이 아니라 클릭한 문서의 id로만 요청 - 서버가 세션의 patientId로 소유권을 다시 검증하므로
 // 설령 id를 조작해도 타인의 기록은 절대 내려오지 않는다.
 async function loadDetail(id) {
@@ -73,6 +77,10 @@ async function loadDetail(id) {
     }
     const doc = await res.json();
 
+    if (currentImageObjectUrl) {
+        URL.revokeObjectURL(currentImageObjectUrl);
+        currentImageObjectUrl = null;
+    }
     recordDetail.innerHTML = '';
     const title = document.createElement('h3');
     title.textContent = `${doc.document_type_label} - ${formatDate(doc.parsed_date || doc.created_at)}`;
@@ -107,7 +115,8 @@ async function loadDetail(id) {
             .then((blob) => {
                 const img = document.createElement('img');
                 img.className = 'record-detail__image';
-                img.src = URL.createObjectURL(blob);
+                currentImageObjectUrl = URL.createObjectURL(blob);
+                img.src = currentImageObjectUrl;
                 img.alt = '원본 스캔 이미지';
                 imageCol.appendChild(img);
             })

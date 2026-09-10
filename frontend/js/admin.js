@@ -38,6 +38,11 @@ const DOCUMENT_TYPE_LABELS = {
     receipt: '영수증',
 };
 
+// loadDocuments()가 목록을 다시 그릴 때마다 list.innerHTML을 비우는데, 그 전에 펼쳐봤던
+// 항목의 <img> blob URL은 회수 안 하면 메모리에 계속 쌓이므로 생성할 때마다 여기 모아뒀다가
+// 다음 loadDocuments() 시작 시 한꺼번에 해제한다.
+const documentImageObjectUrls = [];
+
 // 저장된 스캔 문서 목록.
 // [2026-09-10] 원문(왼쪽, 작게)/원본 이미지(오른쪽)를 나란히 보여주되, 목록의 모든 항목을
 // 한꺼번에 펼쳐두면 항목 수만큼 이미지를 전부 미리 불러오게 되므로 이전처럼 "선택해야"(클릭)
@@ -92,7 +97,9 @@ function renderDocument(doc) {
             .then((blob) => {
                 const img = document.createElement('img');
                 img.className = 'record-detail__image';
-                img.src = URL.createObjectURL(blob);
+                const objectUrl = URL.createObjectURL(blob);
+                documentImageObjectUrls.push(objectUrl);
+                img.src = objectUrl;
                 img.alt = '원본 스캔 이미지';
                 imageCol.appendChild(img);
             })
@@ -110,6 +117,7 @@ async function loadDocuments() {
     const res = await fetch(`${WAS_BASE}/api/documents`, { credentials: 'include' });
     if (!res.ok) return;
     const docs = await res.json();
+    documentImageObjectUrls.splice(0).forEach((url) => URL.revokeObjectURL(url));
     list.innerHTML = '';
     docs.forEach(renderDocument);
 }

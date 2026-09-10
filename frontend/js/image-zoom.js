@@ -54,7 +54,9 @@
 
     function close() {
         overlay.hidden = true;
-        img.src = '';
+        // src=''는 일부 브라우저에서 현재 문서 URL로 재요청을 보내는 것으로 취급되는
+        // 잘 알려진 함정이라 removeAttribute를 쓴다(빈 문자열 대입 대신).
+        img.removeAttribute('src');
     }
 
     zoomInBtn.addEventListener('click', () => setScale(scale + SCALE_STEP));

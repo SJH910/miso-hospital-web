@@ -800,6 +800,14 @@ body.landing-page {
 
 /* 내 진료기록 페이지 - 원문 표시 영역 (.panel과 함께 사용) */
 /* [2026-09-10] 텍스트(왼쪽)/원본 이미지(오른쪽) 2단 배치. 좁은 화면에서는 세로로 쌓임. */
+/* [버그 수정 2026-09-10] admin.js가 이 grid 자체에 hidden을 토글해서 "선택해야 보이게"
+   구현했는데, 아래 display:flex가 브라우저 기본 [hidden]{display:none}과 우선순위가
+   같아 author 스타일시트가 이겨버려 hidden이 안 먹혔음(image-zoom-overlay 때와 동일한
+   원인) - 선택 안 해도 텍스트가 계속 보이던 버그. [hidden]일 때는 확실히 숨기도록 명시.*/
+.record-detail__grid[hidden] {
+    display: none;
+}
+
 .record-detail__grid {
     display: flex;
     gap: 20px;
@@ -823,6 +831,13 @@ body.landing-page {
     font-size: 13px;
     line-height: 1.6;
     color: #333;
+}
+
+/* [버그 수정 2026-09-10] #scanImagePreview(admin.html)가 이 클래스를 쓰면서 시작은 hidden
+   속성 상태인데, 아래 display:block이 무조건 선언돼 있어 같은 원인(위 두 버그 참고)으로
+   hidden이 안 먹혀 파일 선택 전에도 빈 이미지 아이콘이 보이던 문제 - 명시적으로 재정의. */
+.record-detail__image[hidden] {
+    display: none;
 }
 
 .record-detail__image {
