@@ -44,6 +44,12 @@ else:
     with open(KEY_FILE, "rb") as key_file:
         key = key_file.read()
 
+# [보안 수정 2026-09-10] 이 파일을 만들 때 권한을 안 좁혀서 기본 umask대로 0644(그룹/전체 읽기
+# 가능)로 생성되고 있었음 - audit_decorator.py는 같은 문제를 이미 0600으로 고쳐뒀는데
+# (SecureTimedRotatingFileHandler) 이쪽엔 그 조치가 빠져있었던 것. 이미 있던 파일이든 새로
+# 만든 파일이든 매번 재적용해서 소유자 전용으로 확실히 좁힌다.
+os.chmod(KEY_FILE, 0o600)
+
 cipher = Fernet(key)
 
 # --- 감사 로그 DB (SQLite) ---
@@ -65,6 +71,9 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+    # KEY_FILE과 같은 이유 - original_encrypted에 마스킹 전 원문이 들어있어서, 이 파일과
+    # secret.key 둘 다 그룹/전체 읽기 가능이면 키+암호문을 같이 읽어 복호화당할 수 있었음.
+    os.chmod(DB_FILE, 0o600)
 
 init_db()
 
