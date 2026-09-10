@@ -14,6 +14,8 @@ was/*.traineddata
 
 # log_audit_tool.py가 실행할 때마다 생성하는 리포트 — 소스가 아닌 실행 결과물
 chatbot-service/log_audit_report_*.csv
+# [2026-09-10] generate_audit_report()가 새로 추가한 종합 리포트 — 위와 같은 이유로 제외
+chatbot-service/security_audit_report_*.csv
 
 # 스캔 문서(처방전/진단서/영수증) 원본 이미지 — 암호화해서 저장하지만 민감한 의료 이미지라 git에는 안 올림
 scanned-images/
