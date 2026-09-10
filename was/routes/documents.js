@@ -170,14 +170,18 @@ router.post("/", verifyCsrfToken, requirePermission("documents:create"), (req, r
   });
 });
 
-// 저장된 스캔 문서 목록 — 관리자 전용. OCR 원문(extracted_text)/parsed_fields는 응답에 아예 포함하지 않는다
-// (화면에서 숨기는 게 아니라 서버가 애초에 내려보내지 않음 -> 클라이언트 실수로 노출될 여지 자체를 없앰).
+// 저장된 스캔 문서 목록 — 관리자 전용.
+// [2026-09-10] 원래는 extracted_text/parsed_fields를 응답에서 아예 뺐었음(파싱 오인식 여부를
+// 저장한 admin 본인이 확인할 방법이 없다는 문제가 report_merge_final.md에 남아있던 상태) —
+// 화면에 원문+원본 이미지를 나란히 보여주기로 하면서 extracted_text를 다시 포함하도록 변경.
+// parsed_fields는 여전히 제외(주민등록번호 등 민감 라벨은 저장 시 걸러내지만, 화면에서 아직
+// 쓰지도 않는 값까지 내려보낼 이유는 없음 — 필요해지면 그때 추가).
 // 환자용 조회 라우트도 만들지 않는다 (board.js가 IDOR을 막기 위해 소유권을 검증하는 것과 같은 맥락으로,
 // 애초에 환자가 접근할 수 있는 경로 자체를 두지 않는 편이 더 안전함).
 router.get("/", requirePermission("documents:view"), async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT sd.id, sd.patient_id, p.name AS patient_name, sd.document_type, sd.created_at,
+      `SELECT sd.id, sd.patient_id, p.name AS patient_name, sd.document_type, sd.extracted_text, sd.created_at,
               (sd.image_path IS NOT NULL) AS hasImage
        FROM scanned_documents sd
        JOIN patients p ON p.id = sd.patient_id

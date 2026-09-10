@@ -38,10 +38,14 @@ const DOCUMENT_TYPE_LABELS = {
     receipt: '영수증',
 };
 
-// 저장된 스캔 문서 목록. 서버(GET /api/documents)가 OCR 원문 자체를 내려주지 않으므로
-// 여기서는 이름/날짜·시간/문서종류만 표시한다 (원문을 화면에 보여주지 않기로 한 정책).
+// 저장된 스캔 문서 목록.
+// [2026-09-10] 원문(왼쪽, 작게)/원본 이미지(오른쪽, 바로 보이게)를 나란히 표시하도록 변경 —
+// 이전엔 서버가 원문을 아예 내려주지 않고 이미지도 클릭해야 여는 링크였는데, admin(저장한
+// 사람) 본인이 OCR 오인식 여부를 바로 확인할 수 있도록 GET /api/documents 응답에 extracted_text를
+// 포함시키고, 이미지도 클릭 없이 로드되게 바꿈(records.js의 환자용 화면과 동일한 레이아웃/패턴 재사용).
 function renderDocument(doc) {
     const li = document.createElement('li');
+    li.className = 'document-item';
     const when = new Date(doc.created_at);
 
     const meta = document.createElement('div');
@@ -51,29 +55,45 @@ function renderDocument(doc) {
     const type = document.createElement('div');
     type.textContent = DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type;
 
-    li.appendChild(meta);
-    li.appendChild(type);
+    li.append(meta, type);
 
-    // [2026-09-10] 원본 이미지가 저장된 문서만 "원본 보기" 링크 표시.
-    // credentials(세션 쿠키)를 실어야 해서 <a href>가 아니라 fetch로 받아 blob URL을 새 탭에 연다
-    // (평문 URL로 직접 노출하면 admin:view 권한 체크 없이 접근되는 경로가 생기므로 반드시 fetch 경유).
+    const grid = document.createElement('div');
+    grid.className = 'record-detail__grid';
+
+    const textCol = document.createElement('div');
+    textCol.className = 'record-detail__text-col';
+    const body = document.createElement('pre');
+    body.className = 'record-detail__text';
+    body.textContent = doc.extracted_text || '(추출된 텍스트 없음)';
+    textCol.appendChild(body);
+    grid.appendChild(textCol);
+
+    // credentials(세션 쿠키)를 실어야 해서 <img src>에 API URL을 직접 넣지 않고 fetch로 받아
+    // blob URL을 만든다 (평문 URL로 직접 노출하면 documents:view 권한 체크를 안 거치는 경로가
+    // 생기므로 반드시 fetch 경유 - records.js와 동일한 이유).
     if (doc.hasImage) {
-        const imageLink = document.createElement('a');
-        imageLink.href = '#';
-        imageLink.textContent = '원본 이미지 보기';
-        imageLink.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const res = await fetch(`${WAS_BASE}/api/documents/${doc.id}/image`, { credentials: 'include' });
-            if (!res.ok) {
+        const imageCol = document.createElement('div');
+        imageCol.className = 'record-detail__image-col';
+        grid.appendChild(imageCol);
+
+        fetch(`${WAS_BASE}/api/documents/${doc.id}/image`, { credentials: 'include' })
+            .then((res) => {
+                if (!res.ok) throw new Error('image fetch failed');
+                return res.blob();
+            })
+            .then((blob) => {
+                const img = document.createElement('img');
+                img.className = 'record-detail__image';
+                img.src = URL.createObjectURL(blob);
+                img.alt = '원본 스캔 이미지';
+                imageCol.appendChild(img);
+            })
+            .catch(() => {
                 showToast('원본 이미지를 불러오지 못했습니다.');
-                return;
-            }
-            const blob = await res.blob();
-            window.open(URL.createObjectURL(blob), '_blank');
-        });
-        li.appendChild(imageLink);
+            });
     }
 
+    li.appendChild(grid);
     document.getElementById('documentList').appendChild(li);
 }
 
@@ -91,6 +111,22 @@ function renderConfidencePreview(text) {
     const container = document.getElementById('confidencePreview');
     container.textContent = text || '(미리보기 없음)';
 }
+
+// [2026-09-10] 파일을 고르는 즉시 원본 이미지를 오른쪽에 미리보기로 보여준다 - 아직 서버에
+// 올리기 전(스캔/저장 전)이라 로컬 File 그대로 URL.createObjectURL로 미리보기만 만들면 됨
+// (fetch로 서버에서 받아올 필요가 없음 - 저장된 문서 목록/환자 상세 화면과는 다른 상황).
+document.getElementById('scanImage').addEventListener('change', function () {
+    const preview = document.getElementById('scanImagePreview');
+    const file = this.files[0];
+    if (preview.src) URL.revokeObjectURL(preview.src);
+    if (!file) {
+        preview.hidden = true;
+        preview.removeAttribute('src');
+        return;
+    }
+    preview.src = URL.createObjectURL(file);
+    preview.hidden = false;
+});
 
 document.getElementById('scanButton').addEventListener('click', async function () {
     const fileInput = document.getElementById('scanImage');

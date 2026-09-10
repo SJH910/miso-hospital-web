@@ -791,11 +791,53 @@ body.landing-page {
 }
 
 /* 내 진료기록 페이지 - 원문 표시 영역 (.panel과 함께 사용) */
+/* [2026-09-10] 텍스트(왼쪽)/원본 이미지(오른쪽) 2단 배치. 좁은 화면에서는 세로로 쌓임. */
+.record-detail__grid {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.record-detail__text-col {
+    flex: 1 1 320px;
+    min-width: 0;
+}
+
+.record-detail__image-col {
+    flex: 1 1 280px;
+    min-width: 0;
+}
+
 .record-detail__text {
     white-space: pre-wrap;
     font-family: inherit;
+    font-size: 13px;
     line-height: 1.6;
     color: #333;
+}
+
+.record-detail__image {
+    max-width: 100%;
+    border-radius: 10px;
+    border: 1px solid #e2e6ea;
+    display: block;
+}
+
+/* admin.html 스캔 화면의 추출된 텍스트는 좀 더 작게 - 원본 이미지 미리보기와 나란히 두기 위함 */
+.record-detail__text-col textarea {
+    font-size: 13px;
+}
+
+/* admin.html - 저장된 스캔 문서 목록(li)에도 같은 2단 그리드 재사용 */
+.document-item {
+    list-style: none;
+    padding: 14px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.document-item .record-detail__grid {
+    margin-top: 8px;
 }
 
 /* admin-board.html - 문의 답변 카드 목록 */

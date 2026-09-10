@@ -76,32 +76,47 @@ async function loadDetail(id) {
     recordDetail.innerHTML = '';
     const title = document.createElement('h3');
     title.textContent = `${doc.document_type_label} - ${formatDate(doc.parsed_date || doc.created_at)}`;
+    recordDetail.appendChild(title);
+
+    // [2026-09-10] 텍스트(왼쪽)/원본 이미지(오른쪽) 2단 배치로 변경.
+    const grid = document.createElement('div');
+    grid.className = 'record-detail__grid';
+
+    const textCol = document.createElement('div');
+    textCol.className = 'record-detail__text-col';
     const body = document.createElement('pre');
     body.className = 'record-detail__text';
     body.textContent = doc.extracted_text;
+    textCol.appendChild(body);
+    grid.appendChild(textCol);
 
-    recordDetail.append(title, body);
-
-    // [2026-09-10] 저장된 원본 이미지가 있으면 본인 것에 한해 볼 수 있게 함.
-    // admin.js와 동일한 이유로 <a href> 대신 fetch(credentials 포함)+blob URL 사용 —
-    // 평문 URL로 노출하면 세션 없이도(또는 다른 계정으로) 접근되는 경로가 생기기 때문.
+    // 저장된 원본 이미지가 있으면 본인 것에 한해, 클릭해서 여는 링크가 아니라 바로 화면에
+    // 보이도록 <img>로 표시. src에 API URL을 직접 넣으면 인증 안 된 요청으로도 브라우저가
+    // 이미지를 시도하므로(쿠키는 credentials 옵션 없이는 안 실림 - 결국 401), fetch로 받아
+    // blob URL을 만들어 넣는다(admin.js와 동일한 패턴, 다만 클릭 없이 로드 시 바로 실행).
     if (doc.hasImage) {
-        const imageLink = document.createElement('a');
-        imageLink.href = '#';
-        imageLink.textContent = '원본 이미지 보기';
-        imageLink.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const imgRes = await fetch(`${WAS_BASE}/api/documents/mine/${doc.id}/image`, { credentials: 'include' });
-            if (!imgRes.ok) {
+        const imageCol = document.createElement('div');
+        imageCol.className = 'record-detail__image-col';
+        grid.appendChild(imageCol);
+
+        fetch(`${WAS_BASE}/api/documents/mine/${doc.id}/image`, { credentials: 'include' })
+            .then((imgRes) => {
+                if (!imgRes.ok) throw new Error('image fetch failed');
+                return imgRes.blob();
+            })
+            .then((blob) => {
+                const img = document.createElement('img');
+                img.className = 'record-detail__image';
+                img.src = URL.createObjectURL(blob);
+                img.alt = '원본 스캔 이미지';
+                imageCol.appendChild(img);
+            })
+            .catch(() => {
                 showToast('원본 이미지를 불러오지 못했습니다.');
-                return;
-            }
-            const blob = await imgRes.blob();
-            window.open(URL.createObjectURL(blob), '_blank');
-        });
-        recordDetail.appendChild(imageLink);
+            });
     }
 
+    recordDetail.appendChild(grid);
     recordDetail.hidden = false;
     recordDetail.scrollIntoView({ behavior: 'smooth' });
 }
