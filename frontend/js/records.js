@@ -65,10 +65,17 @@ async function loadScannedDocuments() {
 // loadDetail을 다시 호출할 때마다 recordDetail.innerHTML을 비우면서 이전 <img>의 blob URL을
 // 회수 안 하면 메모리에 계속 쌓이므로, 직전에 만든 blob URL을 기억해뒀다가 다음 호출 시 해제한다.
 let currentImageObjectUrl = null;
+// [버그 수정 2026-09-10] 문서를 빠르게 연속 클릭하면 나중에 시작한 fetch가 먼저 끝날 수 있어서,
+// 화면엔 A가 떠 있는데 늦게 도착한 B의 fetch가 currentImageObjectUrl을 덮어써 정작 화면에
+// 보이는 A의 blob은 못 지우고 이미 안 보이는 B만 지우게 되는 경쟁 조건이 있었음(BUG_REVIEW_
+// 2026-09-10.md 참고). loadDetail을 호출할 때마다 "지금 보고 있는 문서"를 기록해두고, 이미지
+// fetch가 끝났을 때 그게 여전히 현재 문서인지 확인해서 아니면 버린다.
+let currentDetailId = null;
 
 // [보안] URL이 아니라 클릭한 문서의 id로만 요청 - 서버가 세션의 patientId로 소유권을 다시 검증하므로
 // 설령 id를 조작해도 타인의 기록은 절대 내려오지 않는다.
 async function loadDetail(id) {
+    currentDetailId = id;
     const res = await fetch(`${WAS_BASE}/api/documents/mine/${id}`, { credentials: 'include' });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -76,6 +83,7 @@ async function loadDetail(id) {
         return;
     }
     const doc = await res.json();
+    if (currentDetailId !== id) return; // 응답을 기다리는 사이 다른 문서를 클릭했으면 무시
 
     if (currentImageObjectUrl) {
         URL.revokeObjectURL(currentImageObjectUrl);
@@ -113,6 +121,7 @@ async function loadDetail(id) {
                 return imgRes.blob();
             })
             .then((blob) => {
+                if (currentDetailId !== doc.id) return; // 그 사이 다른 문서를 열었으면 버림
                 const img = document.createElement('img');
                 img.className = 'record-detail__image';
                 currentImageObjectUrl = URL.createObjectURL(blob);

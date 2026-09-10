@@ -572,6 +572,18 @@ body.landing-page {
     font-size: 14px;
 }
 
+/* [2026-09-10] admin.html - "문서 스캔" 폼과 "저장된 문서" 목록/상세를 시각적으로 분리 */
+.admin-doc-section,
+.admin-doc-detail {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid #eef0f2;
+}
+
+.admin-doc-section tbody tr {
+    cursor: pointer;
+}
+
 .board-table th {
     text-align: left;
     color: var(--navy);

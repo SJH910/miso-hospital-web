@@ -174,14 +174,16 @@ router.post("/", verifyCsrfToken, requirePermission("documents:create"), (req, r
 // [2026-09-10] 원래는 extracted_text/parsed_fields를 응답에서 아예 뺐었음(파싱 오인식 여부를
 // 저장한 admin 본인이 확인할 방법이 없다는 문제가 report_merge_final.md에 남아있던 상태) —
 // 화면에 원문+원본 이미지를 나란히 보여주기로 하면서 extracted_text를 다시 포함하도록 변경.
-// parsed_fields는 여전히 제외(주민등록번호 등 민감 라벨은 저장 시 걸러내지만, 화면에서 아직
-// 쓰지도 않는 값까지 내려보낼 이유는 없음 — 필요해지면 그때 추가).
+// parsed_date/parsed_amount도 같이 포함(환자용 /mine은 원래부터 내려주고 있었음 — admin만
+// 못 보고 있었던 비대칭을 없앰). parsed_fields는 여전히 제외 — document_type/patient_name
+// 정도만 채워지는 낮은 가치 데이터라 화면에 노출하지 않기로 결정함(report_merge_final.md 참고).
 // 환자용 조회 라우트도 만들지 않는다 (board.js가 IDOR을 막기 위해 소유권을 검증하는 것과 같은 맥락으로,
 // 애초에 환자가 접근할 수 있는 경로 자체를 두지 않는 편이 더 안전함).
 router.get("/", requirePermission("documents:view"), async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT sd.id, sd.patient_id, p.name AS patient_name, sd.document_type, sd.extracted_text, sd.created_at,
+      `SELECT sd.id, sd.patient_id, p.name AS patient_name, sd.document_type, sd.extracted_text,
+              sd.parsed_date, sd.parsed_amount, sd.created_at,
               (sd.image_path IS NOT NULL) AS hasImage
        FROM scanned_documents sd
        JOIN patients p ON p.id = sd.patient_id
@@ -190,6 +192,49 @@ router.get("/", requirePermission("documents:view"), async (req, res) => {
     res.json(rows.map((r) => ({ ...r, hasImage: Boolean(r.hasImage) })));
   } catch (err) {
     console.error("[documents list error]", err);
+    res.status(500).json({ message: "서버 오류가 발생했습니다." });
+  }
+});
+
+// [2026-09-10] 저장된 문서의 OCR 원문을 관리자가 수정 — 지금까지는 저장 시점에만 텍스트를
+// 고칠 수 있고, 저장 후 오인식을 발견해도 고칠 방법이 없었음. 텍스트만 받아서 저장 시와
+// 똑같은 파싱 로직(parseDate/parseAmount/parseLabeledFields)을 다시 돌려 parsed_date/
+// parsed_amount/parsed_fields까지 같이 갱신 — "원문만 진짜 값이고 나머지는 거기서 파생된다"는
+// 저장 로직과 같은 원칙을 유지해서, 날짜/금액을 텍스트와 따로 수정하는 UI를 안 만들어도 됨.
+router.patch("/:id", verifyCsrfToken, requirePermission("documents:create"), async (req, res) => {
+  const { text } = req.body;
+  const trimmedText = typeof text === "string" ? text.trim() : "";
+  if (!trimmedText) {
+    return res.status(400).json({ message: "저장할 텍스트가 없습니다." });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT sd.document_type, p.name AS patient_name
+       FROM scanned_documents sd JOIN patients p ON p.id = sd.patient_id
+       WHERE sd.id = ?`,
+      [req.params.id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "문서를 찾을 수 없습니다." });
+    }
+    const { document_type, patient_name } = rows[0];
+
+    const finalText = trimmedText.slice(0, MAX_TEXT_LENGTH);
+    const parsedDate = parseDate(finalText);
+    const parsedAmount = parseAmount(finalText);
+    const parsedFields = parseLabeledFields(finalText, {
+      "문서 종류": DOCUMENT_TYPE_LABELS[document_type],
+      "환자명": patient_name,
+    });
+
+    await pool.query(
+      `UPDATE scanned_documents SET extracted_text = ?, parsed_date = ?, parsed_amount = ?, parsed_fields = ? WHERE id = ?`,
+      [finalText, parsedDate, parsedAmount, JSON.stringify(parsedFields), req.params.id]
+    );
+    res.json({ id: Number(req.params.id), extracted_text: finalText, parsed_date: parsedDate, parsed_amount: parsedAmount });
+  } catch (err) {
+    console.error("[documents edit error]", err);
     res.status(500).json({ message: "서버 오류가 발생했습니다." });
   }
 });
