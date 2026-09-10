@@ -3,6 +3,7 @@ from .hash_chain import HashChain
 from .retention import RetentionPolicy
 from .crypto import AuditCrypto
 from .masking import AuditMasking  # 새롭게 추가된 마스킹 모듈
+from .risk_classification import classify_risk
 
 class AuditEngine:
     def __init__(self, encryption_key: bytes, retention_days: int = 90, log_file_path: str = None):
@@ -22,7 +23,12 @@ class AuditEngine:
         # 1. PII 마스킹 처리 
         masked_payload = self.masking.mask_payload(payload)
         print(f"👉 [Step 1] 마스킹 완료: {masked_payload}")
-       
+
+        # 1-1. 위험도(상/중/하) 분류 - 마스킹 결과(악성 의도 플래그)까지 반영해 판단하므로 마스킹 다음에 수행.
+        # payload_encrypted 안이 아니라 최상위 평문 필드로 남겨야, 복호화 없이도 등급으로 필터링/스캔 가능.
+        risk_level = classify_risk(action, masked_payload)
+        print(f"👉 [Step 1-1] 위험도 분류 완료: {risk_level}")
+
         # 2. 마스킹이 완료된 안전한 데이터를 암호화
         encrypted_payload = self.crypto.encrypt_payload(masked_payload)
         print(f"👉 [Step 2] 암호화 완료: {encrypted_payload[:40]}... (생략)")
@@ -36,6 +42,7 @@ class AuditEngine:
             "event_id": event_id,
             "timestamp": timestamp,
             "action": action,
+            "risk_level": risk_level,
             "payload_encrypted": encrypted_payload,
             "expiry_date": expiry_date,
             "previous_hash": self.hash_chain.previous_hash
