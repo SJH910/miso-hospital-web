@@ -25,6 +25,14 @@ body {
     margin-top: 50px;
 }
 
+/* [2026-09-10] admin.html 문서 등록 폼 전용 - 텍스트/원본 이미지 2단 그리드가 실제로 좌우로
+   나뉘려면 .board-container 기본폭(600px)으로는 부족해서(패딩 빼면 ~520px, 두 칼럼 합이
+   더 넓음) 이 페이지만 다른 wide 레이아웃(.page-body)과 같은 900px로 넓힘. 로그인/휴진일
+   관리처럼 그대로 좁아야 하는 다른 .board-container 페이지에는 영향 없음. */
+.board-container--wide {
+    max-width: 900px;
+}
+
 /* admin.html/admin-holidays.html/admin-totp-setup.html - 다른 화면들처럼 site-header(홈 링크·nav·
    로그아웃)를 쓰기 위해 body.landing-page(block 레이아웃)를 같이 쓴다. body가 더 이상 flex로
    중앙 정렬해주지 않으므로, 여기서 직접 수평 중앙 정렬 + 여백을 잡아준다. */
@@ -834,6 +842,20 @@ body.landing-page {
     list-style: none;
     padding: 14px 0;
     border-bottom: 1px solid #eee;
+}
+
+/* [2026-09-10] 목록 항목을 클릭하면 텍스트/이미지가 펼쳐짐 - 버튼이지만 기존 div처럼 보이게 */
+.document-item__summary {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
 }
 
 .document-item .record-detail__grid {

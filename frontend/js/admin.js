@@ -39,26 +39,29 @@ const DOCUMENT_TYPE_LABELS = {
 };
 
 // 저장된 스캔 문서 목록.
-// [2026-09-10] 원문(왼쪽, 작게)/원본 이미지(오른쪽, 바로 보이게)를 나란히 표시하도록 변경 —
-// 이전엔 서버가 원문을 아예 내려주지 않고 이미지도 클릭해야 여는 링크였는데, admin(저장한
-// 사람) 본인이 OCR 오인식 여부를 바로 확인할 수 있도록 GET /api/documents 응답에 extracted_text를
-// 포함시키고, 이미지도 클릭 없이 로드되게 바꿈(records.js의 환자용 화면과 동일한 레이아웃/패턴 재사용).
+// [2026-09-10] 원문(왼쪽, 작게)/원본 이미지(오른쪽)를 나란히 보여주되, 목록의 모든 항목을
+// 한꺼번에 펼쳐두면 항목 수만큼 이미지를 전부 미리 불러오게 되므로 이전처럼 "선택해야"(클릭)
+// 해당 항목의 텍스트/이미지가 보이게 함 — 이미지는 처음 펼칠 때만 fetch하고 이후 토글은
+// 재요청 없이 보이기/숨기기만 한다.
 function renderDocument(doc) {
     const li = document.createElement('li');
     li.className = 'document-item';
     const when = new Date(doc.created_at);
 
+    const summary = document.createElement('button');
+    summary.type = 'button';
+    summary.className = 'document-item__summary';
     const meta = document.createElement('div');
     meta.style.fontWeight = 'bold';
     meta.textContent = `${doc.patient_name} · ${when.toLocaleDateString()} ${when.toLocaleTimeString()}`;
-
     const type = document.createElement('div');
     type.textContent = DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type;
-
-    li.append(meta, type);
+    summary.append(meta, type);
+    li.appendChild(summary);
 
     const grid = document.createElement('div');
     grid.className = 'record-detail__grid';
+    grid.hidden = true;
 
     const textCol = document.createElement('div');
     textCol.className = 'record-detail__text-col';
@@ -68,14 +71,19 @@ function renderDocument(doc) {
     textCol.appendChild(body);
     grid.appendChild(textCol);
 
-    // credentials(세션 쿠키)를 실어야 해서 <img src>에 API URL을 직접 넣지 않고 fetch로 받아
-    // blob URL을 만든다 (평문 URL로 직접 노출하면 documents:view 권한 체크를 안 거치는 경로가
-    // 생기므로 반드시 fetch 경유 - records.js와 동일한 이유).
-    if (doc.hasImage) {
+    let imageLoaded = false;
+    summary.addEventListener('click', () => {
+        grid.hidden = !grid.hidden;
+        if (grid.hidden || imageLoaded || !doc.hasImage) return;
+        imageLoaded = true;
+
         const imageCol = document.createElement('div');
         imageCol.className = 'record-detail__image-col';
         grid.appendChild(imageCol);
 
+        // credentials(세션 쿠키)를 실어야 해서 <img src>에 API URL을 직접 넣지 않고 fetch로 받아
+        // blob URL을 만든다 (평문 URL로 직접 노출하면 documents:view 권한 체크를 안 거치는 경로가
+        // 생기므로 반드시 fetch 경유 - records.js와 동일한 이유).
         fetch(`${WAS_BASE}/api/documents/${doc.id}/image`, { credentials: 'include' })
             .then((res) => {
                 if (!res.ok) throw new Error('image fetch failed');
@@ -91,7 +99,7 @@ function renderDocument(doc) {
             .catch(() => {
                 showToast('원본 이미지를 불러오지 못했습니다.');
             });
-    }
+    });
 
     li.appendChild(grid);
     document.getElementById('documentList').appendChild(li);
