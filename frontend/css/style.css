@@ -834,6 +834,15 @@ body.landing-page {
 }
 
 /* [2026-09-10] 원본 이미지 확대/축소 라이트박스 (js/image-zoom.js) */
+/* [버그 수정 2026-09-10] .image-zoom-overlay가 display:flex를 항상 선언하고 있어서,
+   같은 우선순위인 브라우저 기본 [hidden]{display:none} 규칙을 author 스타일시트가
+   덮어써버려 hidden 속성이 아예 안 먹혔음(페이지 들어가자마자 어두운 배경이 떠 있고,
+   닫기를 눌러 hidden=true를 다시 줘도 시각적으로 안 닫히던 원인). [hidden]일 때는
+   확실히 안 보이도록 명시적으로 재정의.*/
+.image-zoom-overlay[hidden] {
+    display: none;
+}
+
 .image-zoom-overlay {
     position: fixed;
     inset: 0;
