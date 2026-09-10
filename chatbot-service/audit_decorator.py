@@ -38,9 +38,15 @@ LOG_FILE = LOG_DIR / "audit_log.jsonl"
 
 # 해시 체인이 서버 재시작 후에도 끊기지 않도록, 기존 로그 파일의 마지막 hash를 이어받게
 # LOG_FILE 경로를 넘겨준다 (LOG_FILE을 AuditEngine보다 먼저 정의해야 하는 이유).
-audit_engine_instance = AuditEngine(encryption_key=ENCRYPTION_KEY, retention_days=90, log_file_path=str(LOG_FILE))
+# retention_days=730(2년): report_merge_final.md "감사 로그 보존 정책" 결정(2026-09-10).
+audit_engine_instance = AuditEngine(encryption_key=ENCRYPTION_KEY, retention_days=730, log_file_path=str(LOG_FILE))
 
-# 매 자정마다(midnight) 파일을 분할하여 백업하고, 최근 30개 파일만 보관
+# 매 자정마다(midnight) 파일을 분할하여 백업한다.
+# [보안 수정 2026-09-10] backupCount=30이면 TimedRotatingFileHandler가 30일 지난 백업
+# 파일을 자동으로 지워버린다 — "2년 보존" 정책과 무관하게 실제로는 한 달만 지나도 감사
+# 로그가 조용히 사라지고 있었던 버그. backupCount=0으로 바꿔 자동 삭제를 끄고, 실제 삭제는
+# log_retention_tool.py를 관리자가 직접 실행할 때만(dry-run 기본, --execute로만 삭제)
+# 일어나도록 함 — 자동화된 삭제보다 사람이 확인 후 지우는 쪽을 택한 결정과 일치.
 audit_logger = logging.getLogger("AuditLogger")
 audit_logger.setLevel(logging.INFO)
 # 기존 핸들러 제거 (중복 방지)
@@ -62,7 +68,7 @@ rotating_handler = SecureTimedRotatingFileHandler(
     filename=LOG_FILE,
     when="midnight",
     interval=1,
-    backupCount=30,
+    backupCount=0,
     encoding="utf-8"
 )
 # JSONL 포맷이므로 메시지만 출력
