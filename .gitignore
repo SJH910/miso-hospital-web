@@ -17,3 +17,7 @@ chatbot-service/log_audit_report_*.csv
 
 # 스캔 문서(처방전/진단서/영수증) 원본 이미지 — 암호화해서 저장하지만 민감한 의료 이미지라 git에는 안 올림
 scanned-images/
+
+# 로컬 전용 작업 기록 — git에 올리지 않기로 함(2026-09-10)
+report_merge_final.md
+LogDB_plan.md
