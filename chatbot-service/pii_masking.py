@@ -12,13 +12,20 @@ try:
 except ImportError:
     nlp = None  # spacy 자체가 설치 안 된 경우
 
+# 숫자 사이 구분자로 허용하는 문자 - 공백/하이픈/물결/밑줄. [보안 수정 2026-09-10] 마침표(.)가
+# 빠져있어서 "900101.1234567"/"010.1234.5678"처럼 점으로 구분한 주민번호·전화번호가 매칭 자체가
+# 안 돼서 마스킹 없이 그대로 통과되던 버그가 있었음(BUG_REVIEW_2026-09-10.md 참고). 이 문자
+# 클래스가 아래에 여러 번 따로 적혀있으면 한쪽만 고치고 잊어버리기 쉬우므로(이 버그 자체가
+# 그렇게 생긴 것으로 보임) 상수 하나로 모아 재사용한다.
+SEPARATOR = r'[\s\-\~_.]'
+
 def build_spaced_regex(digit_counts):
     # digit_counts = [6, 7] -> 6 digits, then 7 digits
     parts = []
     for count in digit_counts:
-        part = r'[\s\-\~_]*'.join([r'\d'] * count)
+        part = (SEPARATOR + '*').join([r'\d'] * count)
         parts.append(part)
-    return re.compile(r'(' + parts[0] + r')[\s\-\~_]*(' + parts[1] + r')')
+    return re.compile(r'(' + parts[0] + r')' + SEPARATOR + r'*(' + parts[1] + r')')
 
 def shannon_entropy(s: str) -> float:
     """
@@ -154,11 +161,11 @@ def mask_pii(text: str) -> str:
     # 2. 전화번호 (Phone Number)
     # 010 (3) + 4 + 4
     # '0', '1', '[016789]'
-    phone_part1 = r'0[\s\-\~_]*1[\s\-\~_]*[016789]'
+    phone_part1 = r'0' + SEPARATOR + r'*1' + SEPARATOR + r'*[016789]'
     phone_part2 = r'[\s\-\~_]*'.join([r'\d'] * 3) + r'[\s\-\~_]*\d?' # 3 or 4 digits. Let's just use 4 digits for simplicity, or \d 4 times.
-    phone_part2 = r'[\s\-\~_]*'.join([r'\d'] * 4)
-    phone_part3 = r'[\s\-\~_]*'.join([r'\d'] * 4)
-    phone_pattern = re.compile(f'({phone_part1})[\\s\\-\\~_]*({phone_part2})[\\s\\-\\~_]*({phone_part3})')
+    phone_part2 = (SEPARATOR + '*').join([r'\d'] * 4)
+    phone_part3 = (SEPARATOR + '*').join([r'\d'] * 4)
+    phone_pattern = re.compile(f'({phone_part1}){SEPARATOR}*({phone_part2}){SEPARATOR}*({phone_part3})')
     masked_text = phone_pattern.sub(r'\1-****-\3', masked_text)
 
     # 3. 이름 (Name)
