@@ -1,20 +1,26 @@
 """
-로그 데이터 파싱·정규화 (LogDB_plan.md 6번 섹션 1단계).
+로그 데이터 파싱·정규화 + 탐지 결과 리포트 (LogDB_plan.md 6번 섹션 1·3단계).
 
 4개 저장소(audit-logs/audit_log.jsonl, chatbot_logs.db, MySQL chat_messages, MySQL audit_log)를
-각각 복호화해서 공통 스키마로 뽑아내는 배치 도구.
+각각 복호화해서 공통 스키마로 뽑아내고(1단계), pii_masking.mask_pii()로 마스킹 안 된 PII가
+남아있는 필드를 찾아 리포트로 남긴다(3단계).
 
-주의: 여기서 하는 건 "복호화 -> 검사할 텍스트로 변환"까지다. PII가 있는지 판별하는 건
-2단계(탐지 로직) 몫이라 이 파일에서는 하지 않는다 — 6번 섹션 원문 그대로의 경계.
+2단계(탐지 로직 자체)는 팀원이 이미 pii_masking.py/audit-agent/masking.py에 구현·통합해뒀으므로
+여기서는 그 결과물(mask_pii)을 블랙박스로 호출만 한다 — 탐지 로직 자체를 재구현하지 않음.
+"PII 종류(type)"까지는 분류하지 않기로 결정함(2026-09-10) — "발견 여부 + 위치 + 안전한 미리보기"만으로
+원래 목적(사후 감사)은 충분하고, 종류 분류는 mask_pii()의 치환 토큰 문자열에 의존하게 돼서
+pii_masking.py가 바뀔 때마다 같이 깨질 수 있는 약한 결합이라 지금은 뺌.
 
 실행: 프로젝트 루트 또는 chatbot-service/ 어디서 실행해도 동작하도록 전부 __file__ 기준
 절대경로/명시적 sys.path로 처리한다 (이 프로젝트에서 반복적으로 발견된 cwd 버그를 피하기 위함).
 """
 import sys
 import os
+import csv
 import json
 import base64
 import glob
+from datetime import datetime
 from pathlib import Path
 from importlib import import_module
 
@@ -26,13 +32,16 @@ from dotenv import load_dotenv
 CHATBOT_SERVICE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CHATBOT_SERVICE_DIR.parent
 
-# audit-agent(chatbot-service/audit-agent/)를 패키지로 import하기 위해 chatbot-service 자체를
-# sys.path에 추가 — uvicorn --app-dir로 뜰 때와 달리 이 스크립트는 단독 실행되므로 직접 챙겨야 함.
+# audit-agent(chatbot-service/audit-agent/)와 pii_masking을 패키지로 import하기 위해
+# chatbot-service 자체를 sys.path에 추가 — uvicorn --app-dir로 뜰 때와 달리 이 스크립트는
+# 단독 실행되므로 직접 챙겨야 함. 아래 두 import보다 반드시 먼저 실행돼야 함.
 if str(CHATBOT_SERVICE_DIR) not in sys.path:
     sys.path.insert(0, str(CHATBOT_SERVICE_DIR))
 
 audit_agent = import_module("audit-agent")
 AuditCrypto = audit_agent.crypto.AuditCrypto
+
+from pii_masking import mask_pii
 
 
 def _connect_mysql():
@@ -216,6 +225,38 @@ def read_mysql_chat_messages():
     return records
 
 
+# ── 3단계 — 탐지 결과 리포트 ─────────────────────────────────────────────────
+# mask_pii()를 블랙박스로 호출해서 "원문과 마스킹 결과가 다르면 = 마스킹 안 된 PII가 있었다"로
+# 판정한다. 종류(RRN/이메일 등) 분류는 하지 않음(모듈 docstring 참고) — 발견 여부·위치·안전한
+# 미리보기(=마스킹된 값 자체)만 남긴다. 원문은 findings에도, 리포트에도 절대 담지 않는다.
+def scan_for_pii(records):
+    findings = []
+    for record in records:
+        for field, value in record.get("text_fields", {}).items():
+            if not isinstance(value, str) or not value:
+                continue
+            masked = mask_pii(value)
+            if masked != value:
+                findings.append({
+                    "source": record["source"],
+                    "record_id": record["record_id"],
+                    "timestamp": record["timestamp"],
+                    "actor_id": record["actor_id"],
+                    "field": field,
+                    "masked_preview": masked,
+                })
+    return findings
+
+
+def write_report(findings, output_path):
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=["source", "record_id", "timestamp", "actor_id", "field", "masked_preview"]
+        )
+        writer.writeheader()
+        writer.writerows(findings)
+
+
 def main():
     readers = [
         ("mysql_audit", read_mysql_audit_log),
@@ -232,8 +273,17 @@ def main():
         except Exception as e:
             print(f"[{name}] 실패: {type(e).__name__}: {e}", file=sys.stderr)
 
-    print(f"\n총 {len(all_records)}건 (공통 스키마로 변환 완료, PII 탐지는 2단계에서)")
-    return all_records
+    print(f"\n총 {len(all_records)}건 (공통 스키마로 변환 완료)")
+
+    findings = scan_for_pii(all_records)
+    print(f"마스킹 안 된 PII 의심 항목 {len(findings)}건 발견")
+
+    if findings:
+        report_path = CHATBOT_SERVICE_DIR / f"log_audit_report_{datetime.now():%Y%m%d_%H%M%S}.csv"
+        write_report(findings, report_path)
+        print(f"리포트 저장: {report_path}")
+
+    return all_records, findings
 
 
 if __name__ == "__main__":
