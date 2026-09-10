@@ -28,6 +28,27 @@ function decryptRrn(storedValue) {
 const encryptText = encryptRrn;
 const decryptText = decryptRrn;
 
+// [스캔 문서 원본 이미지용] encryptRrn/decryptRrn과 같은 AES-256-GCM·같은 키를 쓰지만,
+// decryptRrn은 마지막에 .toString("utf8")로 변환해서 문자열 전용이다 — 이미지 같은 임의
+// 바이너리를 거기 넣으면 유효하지 않은 UTF-8 시퀀스가 깨져서 원본 바이트가 손상된다.
+// 그래서 문자열 변환 없이 Buffer를 그대로 주고받는 버전을 따로 둔다.
+function encryptBuffer(plainBuffer) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ALGORITHM, config.rrnEncryptionKey, iv);
+  const encrypted = Buffer.concat([cipher.update(plainBuffer), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return Buffer.concat([iv, authTag, encrypted]); // 파일로 그대로 저장할 것이므로 base64 변환 안 함
+}
+
+function decryptBuffer(storedBuffer) {
+  const iv = storedBuffer.subarray(0, 12);
+  const authTag = storedBuffer.subarray(12, 28);
+  const encrypted = storedBuffer.subarray(28);
+  const decipher = crypto.createDecipheriv(ALGORITHM, config.rrnEncryptionKey, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]);
+}
+
 // 화면 표시가 필요해질 경우를 대비한 마스킹 함수 (뒷자리 일부만 노출)
 // 예: 990101-1234567 -> 990101-1******
 function maskRrn(plainRrn) {
@@ -135,4 +156,4 @@ function maskPii(text) {
   return masked;
 }
 
-module.exports = { encryptText, decryptText, encryptRrn, decryptRrn, maskRrn, maskPii };
+module.exports = { encryptText, decryptText, encryptRrn, decryptRrn, encryptBuffer, decryptBuffer, maskRrn, maskPii };

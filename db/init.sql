@@ -191,6 +191,8 @@ CREATE TABLE scanned_documents (
     parsed_date DATE NULL,               -- extracted_text에서 정규식으로 뽑아낸 날짜 (best-effort)
     parsed_amount INT NULL,              -- extracted_text에서 정규식으로 뽑아낸 금액(원) (best-effort)
     parsed_fields JSON NULL,             -- "라벨:값" 형태 줄에서 뽑아낸 나머지 필드. 주민등록번호 등 민감 라벨은 제외
+    image_path VARCHAR(64) NULL,         -- scanned-images/ 안의 암호화된 원본 이미지 파일명(랜덤, 원본 파일명 아님).
+                                          -- NULL이면 원본 이미지 없이 텍스트만 저장된 기존/구버전 레코드.
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (patient_id) REFERENCES patients(id),
     FOREIGN KEY (scanned_by) REFERENCES patients(id)

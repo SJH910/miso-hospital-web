@@ -53,6 +53,27 @@ function renderDocument(doc) {
 
     li.appendChild(meta);
     li.appendChild(type);
+
+    // [2026-09-10] 원본 이미지가 저장된 문서만 "원본 보기" 링크 표시.
+    // credentials(세션 쿠키)를 실어야 해서 <a href>가 아니라 fetch로 받아 blob URL을 새 탭에 연다
+    // (평문 URL로 직접 노출하면 admin:view 권한 체크 없이 접근되는 경로가 생기므로 반드시 fetch 경유).
+    if (doc.hasImage) {
+        const imageLink = document.createElement('a');
+        imageLink.href = '#';
+        imageLink.textContent = '원본 이미지 보기';
+        imageLink.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const res = await fetch(`${WAS_BASE}/api/documents/${doc.id}/image`, { credentials: 'include' });
+            if (!res.ok) {
+                showToast('원본 이미지를 불러오지 못했습니다.');
+                return;
+            }
+            const blob = await res.blob();
+            window.open(URL.createObjectURL(blob), '_blank');
+        });
+        li.appendChild(imageLink);
+    }
+
     document.getElementById('documentList').appendChild(li);
 }
 
@@ -135,14 +156,23 @@ document.getElementById('saveButton').addEventListener('click', async function (
     this.disabled = true;
 
     try {
+        // [2026-09-10] JSON -> FormData로 변경: 텍스트뿐 아니라 원본 이미지도 저장 확정 시점에
+        // 같이 보낸다. #scanImage는 OCR 이후에도 초기화하지 않으므로(별도 reset 없음) 여기서
+        // 다시 읽으면 사용자가 처음 선택했던 그 파일이 그대로 잡힌다.
+        const fileInput = document.getElementById('scanImage');
+        const formData = new FormData();
+        formData.append('patient_id', patientId);
+        formData.append('document_type', documentType);
+        formData.append('text', text);
+        if (fileInput.files[0]) {
+            formData.append('image', fileInput.files[0]);
+        }
+
         const res = await fetch(`${WAS_BASE}/api/documents`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': getCsrfToken(), // [보안 강화 #5 CSRF] 상태 변경 요청에 토큰 첨부
-            },
+            headers: { 'X-CSRF-Token': getCsrfToken() }, // [보안 강화 #5 CSRF] 상태 변경 요청에 토큰 첨부
             credentials: 'include',
-            body: JSON.stringify({ patient_id: patientId, document_type: documentType, text }),
+            body: formData,
         });
         const result = await res.json();
 

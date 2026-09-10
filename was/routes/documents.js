@@ -1,13 +1,53 @@
 const express = require("express");
+const multer = require("multer");
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const pool = require("../db");
 const requirePermission = require("../middleware/requirePermission");
 const { verifyCsrfToken } = require("../middleware/csrf");
+const { encryptBuffer, decryptBuffer } = require("../crypto-utils");
 
 const router = express.Router();
 
 const MAX_TEXT_LENGTH = 8000;
 const ALLOWED_DOCUMENT_TYPES = ["prescription", "diagnosis", "receipt"];
 const DOCUMENT_TYPE_LABELS = { prescription: "처방전", diagnosis: "진단서", receipt: "영수증" };
+
+// scanned-images/ — 암호화된 원본 이미지 저장 위치. secret.key/chatbot_logs.db와 같은 패턴으로
+// 프로젝트 루트에 두고 .gitignore로 제외(민감한 의료 이미지라 git에 올리면 안 됨).
+const IMAGE_DIR = path.join(__dirname, "..", "..", "scanned-images");
+fs.mkdirSync(IMAGE_DIR, { recursive: true });
+
+// ocr.js와 동일한 매직 바이트 검증 — 이 라우트로 오는 이미지도 클라이언트가 보낸 걸 그대로
+// 믿지 않고 다시 검증한다(같은 파일이 재전송되는 거라 원칙적으로 이미 검증된 것이지만,
+// 이 엔드포인트를 직접 호출하는 경로도 있을 수 있으므로 방어적으로 재확인).
+// 복호화한 이미지를 브라우저가 바로 렌더링할 수 있도록, 매직 바이트로 실제 형식을 판별해
+// Content-Type을 맞춰준다(저장 전 isAllowedImage를 통과한 것만 저장되므로 셋 중 하나로 판정됨).
+function detectImageContentType(buffer) {
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return "image/png";
+  return "image/webp";
+}
+
+function isAllowedImage(buffer) {
+  if (!buffer || buffer.length < 12) return false;
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isPng =
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+    buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a;
+  const isWebp =
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+  return isJpeg || isPng || isWebp;
+}
+
+// 이미지도 메모리 버퍼로만 받는다(디스크 미기록 원칙은 그대로 유지 — 암호화해서 저장하는 건
+// 이 핸들러가 명시적으로 하는 것이지, multer가 임의 위치에 평문으로 남기지 않는다는 점이 중요).
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+});
 
 // 이 라벨이 포함된 줄은 parsed_fields에 절대 담지 않는다 (민감정보가 새 컬럼에 한 번 더 복제되는 것을 막기 위함).
 // extracted_text(원문)에는 여전히 남아있지만, 그건 기존과 동일하게 API 응답에 포함되지 않는다.
@@ -65,46 +105,69 @@ function parseLabeledFields(text, knownFields) {
 // 관리자가 OCR 결과를 확인/수정한 뒤 저장 버튼을 눌렀을 때 호출됨.
 // /api/ocr은 추출 전용으로 남겨두고 저장은 이 엔드포인트로 분리했다 —
 // 관리자가 오인식된 텍스트를 고칠 기회를 준 뒤 최종본만 저장하기 위함.
-router.post("/", verifyCsrfToken, requirePermission("documents:create"), async (req, res) => {
-  const { patient_id, document_type, text } = req.body;
-  const trimmedText = typeof text === "string" ? text.trim() : "";
-
-  if (!patient_id || !trimmedText) {
-    return res.status(400).json({ message: "환자를 선택하고 텍스트를 입력해주세요." });
-  }
-  if (!ALLOWED_DOCUMENT_TYPES.includes(document_type)) {
-    return res.status(400).json({ message: "문서 종류를 선택해주세요." });
-  }
-
-  try {
-    // patient_id가 실제 환자(role='patient')를 가리키는지 확인 -> 존재하지 않는 id나 admin 계정에 잘못 연결되는 것 방지
-    const [patientRows] = await pool.query(
-      "SELECT id, name FROM patients WHERE id = ? AND role = 'patient'",
-      [patient_id]
-    );
-    if (patientRows.length === 0) {
-      return res.status(400).json({ message: "존재하지 않는 환자입니다." });
+// [2026-09-10] 원본 이미지도 함께 받아 암호화 후 저장하도록 확장 — 이전엔 JSON만 받고 이미지는
+// /api/ocr 단계에서 버려졌는데, "원본 재조회 필요" 결정에 따라 저장 확정 시점(여기)에 같이 보냄.
+// 이미지는 선택 사항으로 유지 — 없어도 텍스트만으로 기존처럼 저장 가능(하위 호환).
+router.post("/", verifyCsrfToken, requirePermission("documents:create"), (req, res) => {
+  upload.single("image")(req, res, async (err) => {
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ message: "이미지 파일(5MB 이하) 1장만 첨부할 수 있습니다." });
+    }
+    if (err) {
+      return res.status(400).json({ message: "업로드 처리 중 오류가 발생했습니다." });
     }
 
-    const finalText = trimmedText.slice(0, MAX_TEXT_LENGTH);
-    const parsedDate = parseDate(finalText);
-    const parsedAmount = parseAmount(finalText);
-    // "문서 종류"/"환자명"은 OCR로 다시 추측하지 않고 이미 확정된 값(관리자 선택, DB의 실제 환자명)을 그대로 채운다.
-    const parsedFields = parseLabeledFields(finalText, {
-      "문서 종류": DOCUMENT_TYPE_LABELS[document_type],
-      "환자명": patientRows[0].name,
-    });
+    const { patient_id, document_type, text } = req.body;
+    const trimmedText = typeof text === "string" ? text.trim() : "";
 
-    const [result] = await pool.query(
-      `INSERT INTO scanned_documents (patient_id, scanned_by, document_type, extracted_text, parsed_date, parsed_amount, parsed_fields)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [patient_id, req.session.patientId, document_type, finalText, parsedDate, parsedAmount, JSON.stringify(parsedFields)]
-    );
-    res.json({ id: result.insertId });
-  } catch (err) {
-    console.error("[documents save error]", err);
-    res.status(500).json({ message: "서버 오류가 발생했습니다." });
-  }
+    if (!patient_id || !trimmedText) {
+      return res.status(400).json({ message: "환자를 선택하고 텍스트를 입력해주세요." });
+    }
+    if (!ALLOWED_DOCUMENT_TYPES.includes(document_type)) {
+      return res.status(400).json({ message: "문서 종류를 선택해주세요." });
+    }
+    if (req.file && !isAllowedImage(req.file.buffer)) {
+      return res.status(400).json({ message: "지원하지 않는 이미지 형식입니다. (JPEG/PNG/WEBP만 허용)" });
+    }
+
+    try {
+      // patient_id가 실제 환자(role='patient')를 가리키는지 확인 -> 존재하지 않는 id나 admin 계정에 잘못 연결되는 것 방지
+      const [patientRows] = await pool.query(
+        "SELECT id, name FROM patients WHERE id = ? AND role = 'patient'",
+        [patient_id]
+      );
+      if (patientRows.length === 0) {
+        return res.status(400).json({ message: "존재하지 않는 환자입니다." });
+      }
+
+      const finalText = trimmedText.slice(0, MAX_TEXT_LENGTH);
+      const parsedDate = parseDate(finalText);
+      const parsedAmount = parseAmount(finalText);
+      // "문서 종류"/"환자명"은 OCR로 다시 추측하지 않고 이미 확정된 값(관리자 선택, DB의 실제 환자명)을 그대로 채운다.
+      const parsedFields = parseLabeledFields(finalText, {
+        "문서 종류": DOCUMENT_TYPE_LABELS[document_type],
+        "환자명": patientRows[0].name,
+      });
+
+      // 이미지가 첨부됐으면 암호화해서 파일로 저장 — 파일명은 원본과 무관한 랜덤값
+      // (파일명만 보고 어떤 문서인지 유추할 수 없게).
+      let imagePath = null;
+      if (req.file) {
+        imagePath = `${crypto.randomBytes(16).toString("hex")}.enc`;
+        fs.writeFileSync(path.join(IMAGE_DIR, imagePath), encryptBuffer(req.file.buffer));
+      }
+
+      const [result] = await pool.query(
+        `INSERT INTO scanned_documents (patient_id, scanned_by, document_type, extracted_text, parsed_date, parsed_amount, parsed_fields, image_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [patient_id, req.session.patientId, document_type, finalText, parsedDate, parsedAmount, JSON.stringify(parsedFields), imagePath]
+      );
+      res.json({ id: result.insertId, hasImage: Boolean(imagePath) });
+    } catch (err) {
+      console.error("[documents save error]", err);
+      res.status(500).json({ message: "서버 오류가 발생했습니다." });
+    }
+  });
 });
 
 // 저장된 스캔 문서 목록 — 관리자 전용. OCR 원문(extracted_text)/parsed_fields는 응답에 아예 포함하지 않는다
@@ -114,14 +177,41 @@ router.post("/", verifyCsrfToken, requirePermission("documents:create"), async (
 router.get("/", requirePermission("documents:view"), async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT sd.id, sd.patient_id, p.name AS patient_name, sd.document_type, sd.created_at
+      `SELECT sd.id, sd.patient_id, p.name AS patient_name, sd.document_type, sd.created_at,
+              (sd.image_path IS NOT NULL) AS hasImage
        FROM scanned_documents sd
        JOIN patients p ON p.id = sd.patient_id
        ORDER BY sd.created_at DESC`
     );
-    res.json(rows);
+    res.json(rows.map((r) => ({ ...r, hasImage: Boolean(r.hasImage) })));
   } catch (err) {
     console.error("[documents list error]", err);
+    res.status(500).json({ message: "서버 오류가 발생했습니다." });
+  }
+});
+
+// 저장된 원본 이미지 조회 — 관리자 전용. image_path(파일명)만 DB에 두고 실제 파일은 암호화된
+// 상태로 디스크에 있으므로, 여기서 복호화해서 이미지 바이트로 응답한다.
+router.get("/:id/image", requirePermission("documents:view"), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT image_path FROM scanned_documents WHERE id = ?",
+      [req.params.id]
+    );
+    if (rows.length === 0 || !rows[0].image_path) {
+      return res.status(404).json({ message: "저장된 원본 이미지가 없습니다." });
+    }
+    // image_path는 이 라우트가 직접 만든 랜덤 16진수 파일명(crypto.randomBytes(16).toString("hex") + ".enc")만
+    // 저장되므로 경로 조작 문자가 들어올 수 없지만, 혹시 모를 변형에 대비해 파일명 형식을 한 번 더 검증한다.
+    if (!/^[0-9a-f]{32}\.enc$/.test(rows[0].image_path)) {
+      return res.status(500).json({ message: "잘못된 이미지 참조입니다." });
+    }
+    const encrypted = fs.readFileSync(path.join(IMAGE_DIR, rows[0].image_path));
+    const decrypted = decryptBuffer(encrypted);
+    res.set("Content-Type", detectImageContentType(decrypted));
+    res.send(decrypted);
+  } catch (err) {
+    console.error("[documents image error]", err);
     res.status(500).json({ message: "서버 오류가 발생했습니다." });
   }
 });
