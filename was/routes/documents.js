@@ -190,26 +190,34 @@ router.get("/", requirePermission("documents:view"), async (req, res) => {
   }
 });
 
-// 저장된 원본 이미지 조회 — 관리자 전용. image_path(파일명)만 DB에 두고 실제 파일은 암호화된
-// 상태로 디스크에 있으므로, 여기서 복호화해서 이미지 바이트로 응답한다.
+// image_path(파일명)를 복호화해서 이미지 바이트로 응답 — 관리자용/환자 본인용 두 라우트가
+// "누구 것을 볼 수 있는가"(권한/소유권 검증)만 다르고 그 이후 처리는 동일하므로 공통화.
+async function sendImage(res, imagePath) {
+  if (!imagePath) {
+    return res.status(404).json({ message: "저장된 원본 이미지가 없습니다." });
+  }
+  // imagePath는 이 라우트가 직접 만든 랜덤 16진수 파일명(crypto.randomBytes(16).toString("hex") + ".enc")만
+  // 저장되므로 경로 조작 문자가 들어올 수 없지만, 혹시 모를 변형에 대비해 파일명 형식을 한 번 더 검증한다.
+  if (!/^[0-9a-f]{32}\.enc$/.test(imagePath)) {
+    return res.status(500).json({ message: "잘못된 이미지 참조입니다." });
+  }
+  const encrypted = fs.readFileSync(path.join(IMAGE_DIR, imagePath));
+  const decrypted = decryptBuffer(encrypted);
+  res.set("Content-Type", detectImageContentType(decrypted));
+  res.send(decrypted);
+}
+
+// 저장된 원본 이미지 조회 — 관리자 전용(다른 환자 것도 포함해 전체 조회 가능).
 router.get("/:id/image", requirePermission("documents:view"), async (req, res) => {
   try {
     const [rows] = await pool.query(
       "SELECT image_path FROM scanned_documents WHERE id = ?",
       [req.params.id]
     );
-    if (rows.length === 0 || !rows[0].image_path) {
+    if (rows.length === 0) {
       return res.status(404).json({ message: "저장된 원본 이미지가 없습니다." });
     }
-    // image_path는 이 라우트가 직접 만든 랜덤 16진수 파일명(crypto.randomBytes(16).toString("hex") + ".enc")만
-    // 저장되므로 경로 조작 문자가 들어올 수 없지만, 혹시 모를 변형에 대비해 파일명 형식을 한 번 더 검증한다.
-    if (!/^[0-9a-f]{32}\.enc$/.test(rows[0].image_path)) {
-      return res.status(500).json({ message: "잘못된 이미지 참조입니다." });
-    }
-    const encrypted = fs.readFileSync(path.join(IMAGE_DIR, rows[0].image_path));
-    const decrypted = decryptBuffer(encrypted);
-    res.set("Content-Type", detectImageContentType(decrypted));
-    res.send(decrypted);
+    await sendImage(res, rows[0].image_path);
   } catch (err) {
     console.error("[documents image error]", err);
     res.status(500).json({ message: "서버 오류가 발생했습니다." });
@@ -239,7 +247,8 @@ router.get("/mine/:id", async (req, res) => {
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
   const [rows] = await pool.query(
-    `SELECT id, document_type, extracted_text, parsed_date, parsed_amount, parsed_fields, created_at
+    `SELECT id, document_type, extracted_text, parsed_date, parsed_amount, parsed_fields, created_at,
+            (image_path IS NOT NULL) AS hasImage
      FROM scanned_documents
      WHERE id = ? AND patient_id = ?`,
     [req.params.id, req.session.patientId]
@@ -248,7 +257,30 @@ router.get("/mine/:id", async (req, res) => {
     return res.status(404).json({ message: "해당 기록을 찾을 수 없습니다." });
   }
   const doc = rows[0];
-  res.json({ ...doc, document_type_label: DOCUMENT_TYPE_LABELS[doc.document_type] });
+  res.json({ ...doc, hasImage: Boolean(doc.hasImage), document_type_label: DOCUMENT_TYPE_LABELS[doc.document_type] });
+});
+
+// [2026-09-10] 환자 본인의 원본 이미지 조회 — "OCR 원문 재조회" 결정에서 admin만 대상이었던
+// 범위를 환자 본인 것까지 확장. requirePermission이 아니라 /mine/:id와 동일하게 세션의
+// patientId로 소유권을 직접 검증(WHERE ... AND patient_id = ?) — documents:view 권한을 그대로
+// 환자에게 주면 다른 환자 문서까지 전부 보이게 되므로, 권한 부여가 아니라 소유자 스코핑으로 해결.
+router.get("/mine/:id/image", async (req, res) => {
+  if (!req.session.patientId) {
+    return res.status(401).json({ message: "로그인이 필요합니다." });
+  }
+  try {
+    const [rows] = await pool.query(
+      "SELECT image_path FROM scanned_documents WHERE id = ? AND patient_id = ?",
+      [req.params.id, req.session.patientId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "저장된 원본 이미지가 없습니다." });
+    }
+    await sendImage(res, rows[0].image_path);
+  } catch (err) {
+    console.error("[documents mine image error]", err);
+    res.status(500).json({ message: "서버 오류가 발생했습니다." });
+  }
 });
 
 module.exports = router;

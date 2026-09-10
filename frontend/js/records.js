@@ -81,6 +81,27 @@ async function loadDetail(id) {
     body.textContent = doc.extracted_text;
 
     recordDetail.append(title, body);
+
+    // [2026-09-10] 저장된 원본 이미지가 있으면 본인 것에 한해 볼 수 있게 함.
+    // admin.js와 동일한 이유로 <a href> 대신 fetch(credentials 포함)+blob URL 사용 —
+    // 평문 URL로 노출하면 세션 없이도(또는 다른 계정으로) 접근되는 경로가 생기기 때문.
+    if (doc.hasImage) {
+        const imageLink = document.createElement('a');
+        imageLink.href = '#';
+        imageLink.textContent = '원본 이미지 보기';
+        imageLink.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const imgRes = await fetch(`${WAS_BASE}/api/documents/mine/${doc.id}/image`, { credentials: 'include' });
+            if (!imgRes.ok) {
+                showToast('원본 이미지를 불러오지 못했습니다.');
+                return;
+            }
+            const blob = await imgRes.blob();
+            window.open(URL.createObjectURL(blob), '_blank');
+        });
+        recordDetail.appendChild(imageLink);
+    }
+
     recordDetail.hidden = false;
     recordDetail.scrollIntoView({ behavior: 'smooth' });
 }
