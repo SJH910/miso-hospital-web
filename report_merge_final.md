@@ -226,7 +226,6 @@ bash stop.sh && bash start.sh   # 재시작
 ### 2026-09-10 — 팀원 커밋(`24264fe`): `log_audit_tool.py`에 `known_exception` 플래그 추가
 - **배경**: `log_audit_tool.py`의 3단계 스캔(위 2026-09-10 항목)이 `mysql_audit`(WAS 감사 로그) 레코드의 `ip` 필드를 매번 "마스킹 안 된 PII"로 잡아내고 있었음 — 실제로는 `mask_pii()`가 모르는 예외: IP는 침해 대응을 위해 의도적으로 마스킹하지 않기로 한 정책(코드 주석이 `SECURITY_THREAT_MODEL.md §6-4`를 근거로 인용하나, 위 항목에서 이미 확인했듯 이 문서는 저장소에 아직 없음 — 참조만 있고 실체 없는 상태 여전함).
 - **수정**: `mask_pii()`의 치환 토큰 문자열을 들여다보고 PII 종류를 역추론하는 방식은 이 파일이 이미 피하기로 한 약한 결합이라(위 2026-09-10 항목 참고), 그 대신 `record["source"]`만으로 판단하는 `KNOWN_EXCEPTION_SOURCES = {"mysql_audit"}` 플래그를 추가 — findings/CSV/콘솔 요약에 `known_exception` 컬럼으로 노출. 탐지 자체(발견 여부)는 그대로 두고 "이미 알려진, 정책상 의도된 예외"라는 표시만 얹는 방식이라 실제 오탐(위 2026-09-10 항목의 이름 탐지 오탐 등)과 구분됨.
-- **머지**: 제가 작업한 로컬 커밋(`1d2236a`, 감사 로그 보존 정책)과 파일이 겹치지 않아(이건 `log_audit_tool.py`, 제 것은 `audit_decorator.py`/`log_retention_tool.py`) `git merge`로 충돌 없이 병합·푸시됨(`7256eb8`).
 
 ---
 
