@@ -229,6 +229,14 @@ def read_mysql_chat_messages():
 # mask_pii()를 블랙박스로 호출해서 "원문과 마스킹 결과가 다르면 = 마스킹 안 된 PII가 있었다"로
 # 판정한다. 종류(RRN/이메일 등) 분류는 하지 않음(모듈 docstring 참고) — 발견 여부·위치·안전한
 # 미리보기(=마스킹된 값 자체)만 남긴다. 원문은 findings에도, 리포트에도 절대 담지 않는다.
+# mysql_audit(WAS 감사로그)의 ip 필드는 SECURITY_THREAT_MODEL.md §6-4에 따라 침해 대응을 위해
+# 의도적으로 마스킹하지 않는다 - mask_pii()는 이 예외를 모르고 사설 IP를 일반 규칙대로 잡아내므로
+# 여기서 "발견은 하되 알려진 예외로 표시"만 한다. mask_pii()의 치환 토큰 문자열을 들여다보고
+# PII 종류를 추론하는 건 아님(그건 위 docstring에서 이미 하지 않기로 한 결정) - source만으로
+# 판단하므로 mask_pii()가 바뀌어도 이 판정 자체는 깨지지 않는다.
+KNOWN_EXCEPTION_SOURCES = {"mysql_audit"}
+
+
 def scan_for_pii(records):
     findings = []
     for record in records:
@@ -244,6 +252,7 @@ def scan_for_pii(records):
                     "actor_id": record["actor_id"],
                     "field": field,
                     "masked_preview": masked,
+                    "known_exception": record["source"] in KNOWN_EXCEPTION_SOURCES,
                 })
     return findings
 
@@ -251,7 +260,8 @@ def scan_for_pii(records):
 def write_report(findings, output_path):
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["source", "record_id", "timestamp", "actor_id", "field", "masked_preview"]
+            f,
+            fieldnames=["source", "record_id", "timestamp", "actor_id", "field", "masked_preview", "known_exception"],
         )
         writer.writeheader()
         writer.writerows(findings)
@@ -276,7 +286,12 @@ def main():
     print(f"\n총 {len(all_records)}건 (공통 스키마로 변환 완료)")
 
     findings = scan_for_pii(all_records)
-    print(f"마스킹 안 된 PII 의심 항목 {len(findings)}건 발견")
+    known_exception_count = sum(1 for f in findings if f["known_exception"])
+    print(
+        f"마스킹 안 된 PII 의심 항목 {len(findings)}건 발견 "
+        f"(그중 {known_exception_count}건은 known_exception=True — mysql_audit의 ip 필드, "
+        f"SECURITY_THREAT_MODEL.md §6-4 참고, 실제 이슈 아님)"
+    )
 
     if findings:
         report_path = CHATBOT_SERVICE_DIR / f"log_audit_report_{datetime.now():%Y%m%d_%H%M%S}.csv"
