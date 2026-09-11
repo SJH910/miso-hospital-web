@@ -15,7 +15,7 @@ async function loadUserInfo() {
         return;
     }
 
-    document.getElementById('userInfo').textContent = `접속자: ${me.name} 님 (관리자)`;
+    document.getElementById('userInfo').textContent = `${me.name} 님`;
     renderNavLinks(me.role);
 }
 
@@ -49,43 +49,64 @@ function formatDocAmount(amount) {
     return amount == null ? '-' : `${amount.toLocaleString()}원`;
 }
 
-function formatFileSize(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-// [2026-09-11] "항목/금액"이 표로 인식됐을 때만 표시(parseItemTable, best-effort) - 못 알아본
-// 문서는 그냥 원문 텍스트만 보이고 표는 안 뜬다. 신뢰할 수 없는 OCR 값이라 textContent만 사용.
+// [2026-09-11] "항목/금액(들)"이 표로 인식됐을 때만 표시(parseItemTable, best-effort) - 못 알아본
+// 문서는 그냥 원문 텍스트만 보이고 표는 안 뜬다. items는 { headers: string[], rows: [{label,
+// values: string[]}] } 형태(서버가 탭으로 재조립한 다열 구조를 인식하면 열이 여러 개일 수 있음).
+// 신뢰할 수 없는 OCR 값이라 textContent만 사용.
 function renderItemTable(container, items) {
     container.innerHTML = '';
-    if (!items || items.length === 0) return;
+    if (!items || !items.rows || items.rows.length === 0) return;
 
     const table = document.createElement('table');
     table.className = 'ocr-item-table';
+
     const thead = document.createElement('thead');
-    thead.innerHTML = ''; // 헤더 셀은 고정 텍스트라 직접 만듦
     const headRow = document.createElement('tr');
-    const th1 = document.createElement('th');
-    th1.textContent = '항목';
-    const th2 = document.createElement('th');
-    th2.textContent = '금액';
-    headRow.append(th1, th2);
+    const th0 = document.createElement('th');
+    th0.textContent = '항목';
+    headRow.appendChild(th0);
+    items.headers.forEach((h) => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        headRow.appendChild(th);
+    });
     thead.appendChild(headRow);
 
     const tbody = document.createElement('tbody');
-    items.forEach((item) => {
+    items.rows.forEach((row) => {
         const tr = document.createElement('tr');
         const labelTd = document.createElement('td');
-        labelTd.textContent = item.label;
-        const amountTd = document.createElement('td');
-        amountTd.textContent = item.amount;
-        tr.append(labelTd, amountTd);
+        labelTd.textContent = row.label;
+        tr.appendChild(labelTd);
+        row.values.forEach((v) => {
+            const td = document.createElement('td');
+            td.textContent = v;
+            tr.appendChild(td);
+        });
         tbody.appendChild(tr);
     });
 
     table.append(thead, tbody);
     container.appendChild(table);
+}
+
+// [2026-09-11] "환자명/병원명/진료기간" 등 라벨:값 미리보기 - 주민번호/카드번호처럼 민감한
+// 라벨은 서버(parseDisplayFields/maskFieldValue)가 이미 마스킹해서 내려줌. 원문 그대로는
+// 아래 "수정하기" textarea에서 확인 가능("텍스트 결과=마스킹 / 수정하기=원문" 결정).
+function renderDisplayFields(container, fields) {
+    container.innerHTML = '';
+    if (!fields || fields.length === 0) return;
+
+    const dl = document.createElement('dl');
+    dl.className = 'ocr-info-list';
+    fields.forEach((f) => {
+        const dt = document.createElement('dt');
+        dt.textContent = f.label;
+        const dd = document.createElement('dd');
+        dd.textContent = f.value;
+        dl.append(dt, dd);
+    });
+    container.appendChild(dl);
 }
 
 // [2026-09-10] "저장된 문서"를 카드 목록 대신 표(환자용 records.html과 같은 패턴)로 바꾸고,
@@ -109,7 +130,13 @@ function renderRow(doc) {
 
     tr.append(nameTd, typeTd, dateTd, amountTd);
     // 수정 저장 후 표 행도 같이 갱신해야 해서 날짜/금액 셀 참조를 같이 넘겨준다.
-    tr.addEventListener('click', () => loadDetail(doc, dateTd, amountTd));
+    tr.addEventListener('click', () => {
+        // [2026-09-11] 지금 상세 패널에 어떤 행이 떠 있는지 표에서도 바로 보이게 - 클릭한
+        // 행에만 .is-selected를 남기고 나머지는 지운다.
+        document.querySelectorAll('#documentList tr.is-selected').forEach((el) => el.classList.remove('is-selected'));
+        tr.classList.add('is-selected');
+        loadDetail(doc, dateTd, amountTd);
+    });
     document.getElementById('documentList').appendChild(tr);
 }
 
@@ -147,6 +174,10 @@ function loadDetail(doc, dateTd, amountTd) {
     };
     refreshMeta();
     detail.appendChild(meta);
+
+    const displayFieldsContainer = document.createElement('div');
+    renderDisplayFields(displayFieldsContainer, doc.parsed_display_fields);
+    detail.appendChild(displayFieldsContainer);
 
     const itemTableContainer = document.createElement('div');
     renderItemTable(itemTableContainer, doc.parsed_items);
@@ -194,7 +225,9 @@ function loadDetail(doc, dateTd, amountTd) {
             doc.parsed_date = result.parsed_date;
             doc.parsed_amount = result.parsed_amount;
             doc.parsed_items = result.parsed_items;
+            doc.parsed_display_fields = result.parsed_display_fields;
             refreshMeta();
+            renderDisplayFields(displayFieldsContainer, doc.parsed_display_fields);
             renderItemTable(itemTableContainer, doc.parsed_items);
             dateTd.textContent = formatDocDate(doc.parsed_date || doc.created_at);
             amountTd.textContent = formatDocAmount(doc.parsed_amount);
@@ -252,29 +285,39 @@ function renderConfidencePreview(text) {
 // (fetch로 서버에서 받아올 필요가 없음 - 저장된 문서 목록/환자 상세 화면과는 다른 상황).
 document.getElementById('scanImage').addEventListener('change', function () {
     const preview = document.getElementById('scanImagePreview');
-    const fileInfoCard = document.getElementById('fileInfoCard');
-    const processingCard = document.getElementById('processingCard');
     const file = this.files[0];
     if (preview.src) URL.revokeObjectURL(preview.src);
-    // 새 파일을 고르면 이전 파일의 처리 상태(소요시간 등)는 더 이상 유효하지 않으므로 숨김 -
-    // 다시 "텍스트 추출"을 눌러야 새 값으로 채워짐.
-    processingCard.hidden = true;
     if (!file) {
         preview.hidden = true;
         preview.removeAttribute('src');
-        fileInfoCard.hidden = true;
         return;
     }
     preview.src = URL.createObjectURL(file);
     preview.hidden = false;
-
-    // [2026-09-11] 실측 가능한 값만 표시(파일명/크기/형식) - 로컬 File 객체에서 바로 읽으면
-    // 되므로 서버 왕복 불필요.
-    document.getElementById('fileInfoName').textContent = file.name;
-    document.getElementById('fileInfoSize').textContent = formatFileSize(file.size);
-    document.getElementById('fileInfoType').textContent = file.type || '알 수 없음';
-    fileInfoCard.hidden = false;
 });
+
+// [2026-09-11] "인식 결과 미리보기"/"원문 텍스트 수정"을 버튼이 아니라 탭으로 전환 - 둘 중 선택된
+// 쪽만 밑줄(.is-active, style.css)로 표시되고, 그 탭에 해당하는 영역만 보인다. scanDisplayFields는
+// 마스킹된 값을 보여주는데 바로 아래 textarea에 마스킹 없는 원문이 항상 같이 보이면 마스킹한
+// 의미가 없어서, 명시적으로 탭을 눌러야만 원문 textarea가 나타나게 함.
+const previewTabBtn = document.getElementById('previewTabBtn');
+const editTabBtn = document.getElementById('editTabBtn');
+const confidencePreviewEl = document.getElementById('confidencePreview');
+const resultTextGroup = document.getElementById('resultTextGroup');
+
+function setOcrTab(tab) {
+    const isPreview = tab === 'preview';
+    previewTabBtn.classList.toggle('is-active', isPreview);
+    previewTabBtn.setAttribute('aria-selected', String(isPreview));
+    editTabBtn.classList.toggle('is-active', !isPreview);
+    editTabBtn.setAttribute('aria-selected', String(!isPreview));
+    confidencePreviewEl.hidden = !isPreview;
+    resultTextGroup.hidden = isPreview;
+}
+
+previewTabBtn.addEventListener('click', () => setOcrTab('preview'));
+editTabBtn.addEventListener('click', () => setOcrTab('edit'));
+setOcrTab('preview');
 
 document.getElementById('scanButton').addEventListener('click', async function () {
     const fileInput = document.getElementById('scanImage');
@@ -309,13 +352,11 @@ document.getElementById('scanButton').addEventListener('click', async function (
         // .value로만 삽입 (innerHTML 아님) -> OCR 결과에 <script>가 섞여 있어도 텍스트로만 취급되어 실행되지 않음
         resultEl.value = result.text;
         renderConfidencePreview(result.text);
+        // [2026-09-11] 저장된 문서 상세보기와 동일한 구조화 미리보기를 스캔 직후에도 표시 -
+        // /api/ocr 응답에 parsed_display_fields/parsed_items가 포함되도록 서버(ocr.js)도 같이 수정함.
+        renderDisplayFields(document.getElementById('scanDisplayFields'), result.parsed_display_fields);
+        renderItemTable(document.getElementById('scanItemTable'), result.parsed_items);
         statusEl.textContent = result.text ? '추출 완료.' : '이미지에서 텍스트를 찾지 못했습니다.';
-
-        // [2026-09-11] 서버가 실제로 측정해서 돌려준 소요시간(ms) - 꾸며낸 숫자 아님.
-        if (typeof result.processingMs === 'number') {
-            document.getElementById('processingTime').textContent = `${(result.processingMs / 1000).toFixed(1)}초`;
-            document.getElementById('processingCard').hidden = false;
-        }
     } catch (err) {
         statusEl.textContent = '텍스트 추출 중 오류가 발생했습니다.';
     } finally {

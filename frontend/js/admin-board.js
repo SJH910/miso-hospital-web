@@ -22,7 +22,7 @@ async function loadUserInfo() {
         return;
     }
 
-    document.getElementById('userInfo').textContent = `접속자: ${me.name} 님`;
+    document.getElementById('userInfo').textContent = `${me.name} 님`;
     renderNavLinks(me.role);
 }
 
@@ -68,7 +68,12 @@ function renderRow(post, index) {
     statusTd.appendChild(badge);
 
     tr.append(numTd, titleTd, dateTd, statusTd);
-    tr.addEventListener('click', () => renderDetail(post, statusTd));
+    tr.addEventListener('click', () => {
+        // [2026-09-11] 지금 상세 패널에 어떤 문의가 떠 있는지 표에서도 바로 보이게.
+        document.querySelectorAll('#inquiryList tr.is-selected').forEach((el) => el.classList.remove('is-selected'));
+        tr.classList.add('is-selected');
+        renderDetail(post, statusTd);
+    });
     inquiryList.appendChild(tr);
 }
 
@@ -208,6 +213,7 @@ async function submitAnswer(post, textarea, button, statusTd) {
         const refreshed = allPosts.find((p) => p.id === post.id);
         if (refreshed) {
             const row = inquiryList.querySelector(`tr[data-post-id="${post.id}"]`);
+            if (row) row.classList.add('is-selected'); // loadInquiries()가 표를 다시 그려서 선택 표시가 지워졌으므로 복원
             const refreshedStatusTd = row ? row.children[3] : statusTd;
             renderDetail(refreshed, refreshedStatusTd);
         }

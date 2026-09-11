@@ -278,6 +278,45 @@ bash stop.sh && bash start.sh   # 재시작
 - **항목/금액 표 (best-effort)**: "환자명/주민번호/진료기간별 표"까지는 지금 파싱 수준으로 무리라고 판단해, 대신 "라벨 + 금액(원)" 형태 줄이 2줄 이상 인식되면 표로 보여주는 `parseItemTable()`을 `was/routes/documents.js`에 신규 추가 — `parsed_date`/`parsed_amount`/`parsed_fields`와 같은 원칙(DB에 안 저장, `extracted_text`에서 매번 재계산)으로 `GET /api/documents`·`PATCH /api/documents/:id` 응답에 `parsed_items`로 포함. 인식 안 되면 `null` — 화면은 표 없이 기존처럼 텍스트만 보여줌("스캔이 된 대로만" 된다는 사용자 질문에 대한 답과 일치).
 - **검증**: `POST /api/ocr` 응답에 `processingMs` 실측값 포함 확인. 항목표 인식 가능한 텍스트로 문서 저장 → `GET /api/documents`에 `parsed_items`(진료비/약제비/총금액 3줄) 정상 포함 확인. 항목표 없는 일반 텍스트 → `parsed_items: null` 확인. `PATCH`로 텍스트를 항목표 있는 내용으로 수정 → 응답의 `parsed_items`가 새로 계산되어 갱신됨 확인. 정적 파일 서빙(`200`) + `node --check` + HTML 태그 짝 확인. 브라우저 자동화 도구가 없어 실제 렌더링은 육안 확인 필요.
 
+### 2026-09-11 — OCR 결과 화면 "너무 다름/못생김" 피드백 반영, 최종 2단 레이아웃으로 확정 (`feature/ocr`)
+- **1차 시도 반려**: 위 카드 레이아웃 작업 직후 참고 스크린샷과 비교해 "너무 다르다"는 피드백 → 4단 그리드(업로드|미리보기|결과|사이드바), 컨테이너 1400px로 확장한 개편안을 시도했으나 "진짜 개못생김"으로 반려됨.
+- **명시적 재지시**: "사진 그대로 이미지 업로드 밑에 미리보기, 오른쪽에 추출 결과. 처리 상태랑 파일 정보 없어도 됨" — 정확한 요구사항을 다시 받음.
+- **수정**: 4단 그리드를 걷어내고 왼쪽 칼럼(업로드 카드 하나 — 파일 인풋+스캔 버튼+미리보기 이미지가 같은 카드 안에 세로로 쌓임) / 오른쪽 칼럼(OCR 결과 카드) 2단으로 단순화, 컨테이너 폭도 900px로 되돌림. 파일 정보 카드·처리 상태 카드와 그 JS 로직(`formatFileSize` 등) 전부 제거.
+- **검증**: HTML 태그 짝, `node --check` 통과. 실제 렌더링은 육안 확인 필요(브라우저 자동화 도구 없음) — 이후 사용자가 직접 확인.
+
+### 2026-09-11 — OCR 결과 구조화 미리보기(라벨:값 + 항목표) 추가, 민감정보는 미리보기만 마스킹 (`feature/ocr`)
+- **요청**: 참고 스크린샷(환자명/병원명/진료기간 등 라벨:값 + 항목별 금액 표)을 보여주며 "추출 결과 이렇게 못함?" → 이어서 구체적 정책 지시: "1. 텍스트 결과에서는 마스킹 하고, 수정하기에서는 보이게. 2. 개선. 3. 시도해라."
+- **구현**:
+  - `was/routes/documents.js`에 표시 전용 파서 `parseDisplayFields(text)` 신규 추가 — 기존에 DB에 저장되는 `parseLabeledFields`(민감 라벨 자체를 제외)와는 별개로, 화면에 "보여주기 위한" 값이라 민감 라벨(주민등록번호/카드번호/전화번호 등)도 포함하되 `maskFieldValue()`로 마스킹해서 내려줌 — 주민번호는 `990101-1******` 형태, 카드/계좌번호는 뒤 4자리만 남기고 마스킹, 전화번호는 기존 `maskPii()` 재사용. **DB에는 저장 안 함**(`parsed_items`와 같은 원칙 — `extracted_text`에서 매번 재계산). 콜론 있는 줄("라벨: 값")뿐 아니라 콜론 없이 공백 2칸 이상으로 구분된 줄("라벨   값")도 인식하도록 개선(2번 "개선" 요청 반영).
+  - `was/routes/ocr.js`의 `buildTabularText`에 단어 좌표(bbox) 기반 다열(多列) 표 재구성 로직(`groupWordsIntoColumns`) 신규 추가 — 같은 줄 안에서 단어 사이 간격이 줄 높이의 2배 이상 벌어진 지점을 "다음 열"로 판단해 탭 문자로 재조립(3번 "시도해라" 요청 반영). **임계값 시행착오**: 처음엔 "줄 안 단어 폭 평균"을 임계값으로 잡았다가 유난히 긴 단어 하나가 임계값을 실제 열 간격보다 훨씬 크게 끌어올려 열 구분을 놓치는 문제를 합성 테스트 이미지(PIL 생성)로 실측 확인 → "줄 높이 기준"(`Math.max(30, lineHeight*2)`)으로 교체해 재검증, 한글/영문 3열 표 둘 다 깨끗하게 분리되고 일반 문장에서는 탭이 안 섞이는 것(오탐 0건) 확인.
+  - `frontend/js/admin.js`에 `renderDisplayFields`/`renderItemTable` 렌더러 추가(신뢰 못 할 OCR 값이라 `textContent`만 사용, `innerHTML` 금지).
+- **범위 확인**: 사용자가 "수정해도 ocr 부분만 영향 가는 거지?"라고 확인 요청 → `documents.js`/`ocr.js`/`admin.js`/`admin.html`만 변경, 다른 라우트·화면 무영향임을 확인 후 진행.
+- **검증**: 합성 이미지(영문 3열/한글 3열/일반 한글 문장)로 curl 검증, 실제 저장된 문서(진료비 영수증)로 `GET /api/documents` 재조회 시 라벨:값 + 항목표 정상 렌더링 확인. `PATCH`로 원문 수정 시 두 필드 다 재계산되어 갱신되는 것 확인.
+- **커밋 보류**: 사용자 명시적 지시("다 하고 커밋 하지 마라")로 이 시점까지 커밋 안 함.
+
+### 2026-09-11 — 로그인 후 화면 전반 UI 통일 작업 (`feature/ocr`)
+여러 개의 작은 통일 요청을 한 번에 처리:
+- **공통 헤더/본문 구조 통일**: `records.html`/`board.html` 등이 쓰던 `.page-header`+`.page-body` 구조를 `admin.html`/`admin-holidays.html`/`admin-totp-setup.html`에도 동일 적용(로그인 전 페이지인 `login.html`/`index.html`/`signup.html`은 대상에서 제외). 사용자 재확인: "통일하라는 게 저거 없는 데도 없으니까 통일하라고 한 거"로 범위(전체 로그인 후 화면) 재확인.
+- **선택된 행 강조**: 참고 스크린샷(탭 밑줄 UI)처럼 클릭한 행이 시각적으로 구분되도록, `admin.html`("저장된 문서")·`admin-board.js`("전체 문의 목록") 표 행 클릭 시 `.is-selected` 클래스 토글(민트색 배경) 추가. `admin-board.js`는 답변 등록 후 목록이 다시 그려져도 방금 선택했던 행에 `.is-selected`가 유지되도록 `data-post-id`로 재조회해서 복구.
+- **로그인 사용자 표시 통일**: 페이지마다 "접속자: 관리자 님 (관리자)" / "관리자 님" 등 제각각이던 표기를 전부 `` `${me.name} 님` `` 하나로 통일(10개 프론트 JS 파일 일괄 수정: `admin.js`/`admin-board.js`/`admin-holidays.js`/`admin-accounts.js`/`admin-reservations.js`/`admin-totp-setup.js`/`board.js`/`records.js`/`reservation.js`/`view.js`).
+- **게시판 카테고리 드롭다운 제거**: `board.html`/`admin-board.html` 툴바의 "전체" 카테고리 드롭다운은 실제 카테고리 개념이 DB에 없어 장식용이었음 — 사용자 지시로 제거, 연동된 `.board-toolbar select` CSS도 같이 삭제(grep으로 참조 0건 확인 후 삭제).
+- **게시판 글쓰기 폼 기본 숨김**: `board.html`의 "증상 남기기" 작성 폼이 항상 펼쳐져 있던 것을 `hidden` 기본값으로 바꾸고, 툴바 "글쓰기" 버튼을 누를 때만 토글되도록 변경(등록 완료 시 다시 닫힘).
+- **죽은 CSS 정리**: 위 헤더 통일로 더는 안 쓰이는 `.board-container`/`.board-container--wide` 계열 CSS를 전체 HTML `grep`으로 참조 0건 확인 후 삭제 — 단, `.login-container, .board-container` 처럼 다른 클래스와 묶여 있던 선택자는 `signup.html`이 여전히 쓰는 `.login-container`만 분리해서 남기고 `.board-container` 부분만 제거(사용자 지시: "지우면 영향 가는 것들은 남기고 영향 안 가면 지워라").
+- **검증**: 각 HTML의 `<div>`/`<section>` 태그 짝, 변경한 JS 전부 `node --check` 통과. `.board-container` 제거 전 `grep -rl`로 잔여 참조 0건 확인.
+
+### 2026-09-11 — OCR 스캔 직후 화면에 구조화 미리보기가 빠져있던 문제 + 카드 정렬 버그 수정 (`feature/ocr`)
+- **문제 제기**: 실제 렌더링 스크린샷과 함께 "선 맞추고, ocr 추출 결과 사진대로 해 준다면서 왜 안 함" 지적.
+- **원인 1 (기능 누락)**: 바로 위 항목("OCR 결과 구조화 미리보기 추가")에서 만든 `parseDisplayFields`/`parseItemTable`가 **저장된 문서 상세보기**(`GET /api/documents`, `PATCH /api/documents/:id`)에만 연결돼 있었고, 정작 스캔 직후 화면(`POST /api/ocr` 응답, `admin.js`의 스캔 버튼 핸들러)에는 한 번도 연결된 적이 없었음 — "결과 화면에 구조화 표시를 만들었다"는 이전 설명과 실제 동작이 어긋났던 지점.
+  - **수정**: `documents.js`에 있던 파서들(`parseDate`/`parseAmount`/`parseLabeledFields`/`parseItemTable`/`parseDisplayFields`와 지원 상수·헬퍼 전부)을 새 공용 모듈 `was/document-parsing.js`로 추출 — 두 라우트 파일이 각자 복사해서 들고 있으면 한쪽만 고치고 잊어버리는 이번과 같은 유형의 버그가 재발하기 쉬워서, 하나만 두고 같이 참조하게 함. `was/routes/ocr.js`가 이 모듈의 `parseItemTable`/`parseDisplayFields`를 가져다 `/api/ocr` 응답에 `parsed_items`/`parsed_display_fields`로 포함하도록 수정. `frontend/admin.html`의 "OCR 추출 결과" 카드에 컨테이너(`scanDisplayFields`/`scanItemTable`)를 추가하고, `admin.js`의 스캔 성공 핸들러가 저장된 문서 상세보기와 동일한 `renderDisplayFields`/`renderItemTable`을 호출하도록 연결.
+- **원인 2 (카드 정렬)**: `.panel + .panel { margin-top: 24px }`(클래스 2개 선택자, 명시도 0,2,0)가 `.ocr-card { margin: 0 }`(클래스 1개, 명시도 0,1,0)보다 명시도가 높아서, 그리드로 나란히 배치된 두 `.ocr-card`(둘 다 `.panel`이기도 함) 중 DOM상 뒤에 오는 오른쪽 카드에 `margin-top: 24px`가 그대로 적용되고 있었음 — 실제로는 "다음 줄"이 아니라 같은 줄에 나란히 있는데도 CSS 선택자는 DOM 순서만 보고 매칭되기 때문. 이게 두 카드가 위아래로 어긋나 보이던 진짜 원인이었음.
+  - **수정**: `.ocr-layout > .panel, .ocr-layout > .panel + .panel { margin: 0; }`로 `.ocr-layout` 범위 안에서만 더 높은 명시도로 0을 강제. 다른 페이지들의 `.panel` 세로 목록은 이 margin-top이 원래 의도된 동작이라 그대로 둠(영향 범위 확인 후 `.ocr-layout` 하위로만 한정).
+- **검증**: 합성 이미지(환자명/주민등록번호/병원명 3줄 + 항목 2줄)로 로그인 후 curl → `/api/ocr` 응답에 `parsed_display_fields`(주민등록번호가 `990101-1******`로 마스킹됨) + `parsed_items` 정상 포함 확인. `GET /api/documents`도 기존처럼 정상 동작(회귀 없음) 확인. `node --check`, HTML `<div>` 태그 짝 확인. CSS 다른 `.panel` 목록 페이지들에는 이 그리드 레이아웃이 없어 영향 없음을 grep으로 확인.
+
+### 2026-09-11 — OCR 결과 표시를 "항상 보이는 원문 textarea"에서 탭 전환 방식으로 변경 (`feature/ocr`)
+- **문제 제기**: 마스킹 정책(텍스트 결과=마스킹, 수정하기=원문)을 적용해놓고도, 마스킹된 미리보기 바로 아래에 마스킹 없는 원문 `textarea`가 라벨과 함께 상시 노출되고 있어 "마스킹한 의미가 없다"는 지적("이거 버튼 같은 느낌은 안 들고... 선택되는 걸로 바뀌기").
+- **수정**: "인식 결과 미리보기" / "원문 텍스트 수정" 두 라벨을 버튼이 아니라 탭(`.ocr-tab`, 배경·테두리 없이 텍스트+밑줄만)으로 변경 — 선택된 탭만 밑줄이 진하게(`.is-active`) 표시되고, 해당 탭의 내용만 보이도록 서로 배타적으로 전환(`admin.js`의 `setOcrTab()`). 기본은 "미리보기" 탭이 선택된 상태, "원문 텍스트 수정" 탭을 눌러야만 마스킹 없는 원문 textarea가 나타남. "(OCR이 잘못 읽었을 수 있으니 아래 텍스트와 대조해보세요)" 안내 문구는 두 영역이 전환식으로 바뀌며 의미가 없어져 삭제.
+- **검증**: `node --check`, CSS 중괄호 짝, HTML `<div>` 태그 짝 확인.
+
 ---
 
 ## 7. RBAC (자세한 설계는 [RBAC-Plan.md](RBAC-Plan.md) 참고)

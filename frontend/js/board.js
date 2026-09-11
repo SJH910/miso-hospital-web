@@ -96,7 +96,7 @@ async function loadUserInfo() {
     }
     const me = await res.json();
     setCsrfToken(me.csrfToken); // 새로고침 등으로 토큰이 없을 경우를 대비해 /api/me에서도 재확보
-    document.getElementById('userInfo').textContent = `${me.name}님`;
+    document.getElementById('userInfo').textContent = `${me.name} 님`;
 
     // staff는 board:write/board:read 권한이 없어 이 페이지의 작성 폼·상세보기(view.html)를 쓸 수 없다.
     // 전체 문의 조회·답변은 admin-board.html 전용 화면에서 처리하므로 그쪽으로 보낸다.
@@ -153,15 +153,21 @@ document.getElementById('inquiryForm').addEventListener('submit', async function
 
     document.getElementById('title').value = '';
     document.getElementById('content').value = '';
+    document.getElementById('writeSection').hidden = true; // 등록 완료했으니 다시 닫아둠
 });
 
 document.getElementById('goToAdminBoardBtn').addEventListener('click', () => {
     window.location.href = 'admin-board.html';
 });
 
-document.getElementById('scrollToWriteBtn').addEventListener('click', () => {
-    document.getElementById('writeSection').scrollIntoView({ behavior: 'smooth' });
-    document.getElementById('title').focus();
+// [2026-09-11] "증상 남기기" 폼은 기본적으로 숨겨두고, 이 버튼을 눌러야만 나타나게 함(토글).
+document.getElementById('scrollToWriteBtn').addEventListener('click', function () {
+    const writeSection = document.getElementById('writeSection');
+    writeSection.hidden = !writeSection.hidden;
+    if (!writeSection.hidden) {
+        writeSection.scrollIntoView({ behavior: 'smooth' });
+        document.getElementById('title').focus();
+    }
 });
 
 searchInput.addEventListener('input', () => {

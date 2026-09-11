@@ -7,6 +7,7 @@ const pool = require("../db");
 const requirePermission = require("../middleware/requirePermission");
 const { verifyCsrfToken } = require("../middleware/csrf");
 const { encryptBuffer, decryptBuffer } = require("../crypto-utils");
+const { parseDate, parseAmount, parseLabeledFields, parseItemTable, parseDisplayFields } = require("../document-parsing");
 
 const router = express.Router();
 
@@ -48,77 +49,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
 });
-
-// 이 라벨이 포함된 줄은 parsed_fields에 절대 담지 않는다 (민감정보가 새 컬럼에 한 번 더 복제되는 것을 막기 위함).
-// extracted_text(원문)에는 여전히 남아있지만, 그건 기존과 동일하게 API 응답에 포함되지 않는다.
-const SENSITIVE_LABEL_KEYWORDS = ["주민등록번호", "연락처", "전화번호", "휴대폰", "카드번호", "계좌번호"];
-const MAX_PARSED_FIELDS = 30;
-
-// OCR 원문에서 날짜/금액을 정규식으로 뽑아내는 best-effort 파서.
-// OCR 인식 오류가 그대로 오파싱으로 이어질 수 있으므로 참고용 데이터로만 취급해야 한다.
-function parseDate(text) {
-  const isoMatch = text.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
-  if (isoMatch) {
-    const [, y, m, d] = isoMatch;
-    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  }
-  const koreanMatch = text.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-  if (koreanMatch) {
-    const [, y, m, d] = koreanMatch;
-    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  }
-  return null;
-}
-
-function parseAmount(text) {
-  const match = text.match(/([\d,]{1,12})\s*원/);
-  if (!match) return null;
-  const amount = parseInt(match[1].replace(/,/g, ""), 10);
-  return Number.isFinite(amount) ? amount : null;
-}
-
-// OCR 원문을 줄 단위로 훑어서 "라벨 : 값" 형태의 줄만 키-값으로 뽑아내는 best-effort 파서.
-// 콜론이 없는 줄(안내문구, 깨진 OCR 잡음 등)은 애초에 매칭이 안 되어 자연스럽게 제외된다.
-function parseLabeledFields(text, knownFields) {
-  const fields = { ...knownFields };
-  const lines = text.split("\n");
-
-  for (const line of lines) {
-    if (Object.keys(fields).length >= MAX_PARSED_FIELDS) break;
-
-    const match = line.match(/^\s*(.{1,20}?)\s*[:：]\s*(.+?)\s*$/);
-    if (!match) continue;
-
-    const [, rawLabel, value] = match;
-    const label = rawLabel.trim();
-    if (!label || !value) continue;
-    // 이미 확정된 값(문서종류/환자명)은 OCR 원문에 같은 라벨의 줄이 있어도 덮어쓰지 않는다 -> 신뢰할 수 있는 값이 우선
-    if (Object.prototype.hasOwnProperty.call(knownFields, label)) continue;
-    if (SENSITIVE_LABEL_KEYWORDS.some((keyword) => label.includes(keyword))) continue;
-
-    fields[label] = value;
-  }
-
-  return fields;
-}
-
-// [2026-09-11] "항목 / 금액" 형태 줄을 표로 보여주기 위한 best-effort 파서 (관리자 화면 요청).
-// OCR 텍스트는 원본의 열 정렬을 못 살리는 경우가 많아서, "본인부담금/비급여"처럼 금액이 여러
-// 칸인 표는 안정적으로 못 뽑아낸다 - 그래서 "라벨 하나 + 금액 하나"인 줄만 인식한다. DB에는
-// 저장 안 하고(파생 데이터라 extracted_text만 있으면 언제든 다시 계산 가능) API 응답 시점에
-// 매번 계산해서 내려준다 - 저장 값과 실제 텍스트가 어긋날 걱정이 없음.
-function parseItemTable(text) {
-  const items = [];
-  for (const line of text.split("\n")) {
-    const match = line.match(/^\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9 ]{0,18})\s+([\d,]{1,12}원)\s*$/);
-    if (!match) continue;
-    const label = match[1].trim();
-    if (!label) continue;
-    items.push({ label, amount: match[2] });
-  }
-  // 한두 줄만 우연히 매칭되는 건 진짜 표라고 보기 어려워서, 최소 2줄 이상일 때만 표로 취급.
-  return items.length >= 2 ? items : null;
-}
 
 // 관리자가 OCR 결과를 확인/수정한 뒤 저장 버튼을 눌렀을 때 호출됨.
 // /api/ocr은 추출 전용으로 남겨두고 저장은 이 엔드포인트로 분리했다 —
@@ -212,6 +142,7 @@ router.get("/", requirePermission("documents:view"), async (req, res) => {
         ...r,
         hasImage: Boolean(r.hasImage),
         parsed_items: parseItemTable(r.extracted_text || ""),
+        parsed_display_fields: parseDisplayFields(r.extracted_text || ""),
       }))
     );
   } catch (err) {
@@ -262,6 +193,7 @@ router.patch("/:id", verifyCsrfToken, requirePermission("documents:create"), asy
       parsed_date: parsedDate,
       parsed_amount: parsedAmount,
       parsed_items: parseItemTable(finalText),
+      parsed_display_fields: parseDisplayFields(finalText),
     });
   } catch (err) {
     console.error("[documents edit error]", err);

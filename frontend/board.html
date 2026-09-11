@@ -26,7 +26,8 @@
     </div>
 
     <div class="page-body">
-        <section class="panel write-section" id="writeSection">
+        <!-- [2026-09-11] 처음엔 숨겨두고, 툴바의 "글쓰기" 버튼을 눌러야만 나타나게 함(board.js) -->
+        <section class="panel write-section" id="writeSection" hidden>
             <h3>증상 남기기</h3>
             <form id="inquiryForm">
                 <div class="input-group">
@@ -45,9 +46,6 @@
             <h3 id="listHeading">나의 문의 내역</h3>
             <div class="board-toolbar">
                 <div class="board-toolbar__filters">
-                    <select id="categorySelect" disabled title="현재는 카테고리 구분이 없습니다">
-                        <option>전체</option>
-                    </select>
                     <input type="text" id="searchInput" placeholder="제목으로 검색">
                 </div>
                 <!-- [2026-09-11] "문의 답변" 상단 네비 링크를 없애고 여기로 옮김 - admin만 board.html에
