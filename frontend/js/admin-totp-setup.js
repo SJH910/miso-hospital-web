@@ -36,6 +36,7 @@ let pendingSecret = null; // 등록 확인 전까지만 잠깐 들고 있는 값
 document.getElementById('startEnrollButton').addEventListener('click', async () => {
     const res = await fetch(`${WAS_BASE}/api/totp/setup`, {
         method: 'POST',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
         credentials: 'include',
     });
     if (!res.ok) {
