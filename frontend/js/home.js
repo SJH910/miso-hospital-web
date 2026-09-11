@@ -6,8 +6,9 @@ async function applyLoggedInState(me) {
     // 헤더 nav: "로그인" 버튼 자리에 사용자 이름 + 로그아웃 버튼을 넣는다.
     const navLoginBtn = document.getElementById('navLoginBtn');
     const userChip = document.createElement('span');
+    userChip.id = 'userInfo'; // nav.js의 renderUserMenu()가 이 id로 admin 드롭다운을 붙임 - 다른 페이지는 다 정적 <span id="userInfo">가 있는데 이 페이지만 동적 생성이라 빠져있었음
     userChip.className = 'user-chip';
-    userChip.textContent = `${me.name}님`; // textContent만 사용 — 서버가 내려준 값이라도 innerHTML로 조립하지 않음
+    userChip.textContent = `${me.name} 님`; // textContent만 사용 — 서버가 내려준 값이라도 innerHTML로 조립하지 않음
 
     const logoutBtn = document.createElement('button');
     logoutBtn.type = 'button';
