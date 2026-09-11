@@ -102,6 +102,24 @@ function parseLabeledFields(text, knownFields) {
   return fields;
 }
 
+// [2026-09-11] "항목 / 금액" 형태 줄을 표로 보여주기 위한 best-effort 파서 (관리자 화면 요청).
+// OCR 텍스트는 원본의 열 정렬을 못 살리는 경우가 많아서, "본인부담금/비급여"처럼 금액이 여러
+// 칸인 표는 안정적으로 못 뽑아낸다 - 그래서 "라벨 하나 + 금액 하나"인 줄만 인식한다. DB에는
+// 저장 안 하고(파생 데이터라 extracted_text만 있으면 언제든 다시 계산 가능) API 응답 시점에
+// 매번 계산해서 내려준다 - 저장 값과 실제 텍스트가 어긋날 걱정이 없음.
+function parseItemTable(text) {
+  const items = [];
+  for (const line of text.split("\n")) {
+    const match = line.match(/^\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9 ]{0,18})\s+([\d,]{1,12}원)\s*$/);
+    if (!match) continue;
+    const label = match[1].trim();
+    if (!label) continue;
+    items.push({ label, amount: match[2] });
+  }
+  // 한두 줄만 우연히 매칭되는 건 진짜 표라고 보기 어려워서, 최소 2줄 이상일 때만 표로 취급.
+  return items.length >= 2 ? items : null;
+}
+
 // 관리자가 OCR 결과를 확인/수정한 뒤 저장 버튼을 눌렀을 때 호출됨.
 // /api/ocr은 추출 전용으로 남겨두고 저장은 이 엔드포인트로 분리했다 —
 // 관리자가 오인식된 텍스트를 고칠 기회를 준 뒤 최종본만 저장하기 위함.
@@ -189,7 +207,13 @@ router.get("/", requirePermission("documents:view"), async (req, res) => {
        JOIN patients p ON p.id = sd.patient_id
        ORDER BY sd.created_at DESC`
     );
-    res.json(rows.map((r) => ({ ...r, hasImage: Boolean(r.hasImage) })));
+    res.json(
+      rows.map((r) => ({
+        ...r,
+        hasImage: Boolean(r.hasImage),
+        parsed_items: parseItemTable(r.extracted_text || ""),
+      }))
+    );
   } catch (err) {
     console.error("[documents list error]", err);
     res.status(500).json({ message: "서버 오류가 발생했습니다." });
@@ -232,7 +256,13 @@ router.patch("/:id", verifyCsrfToken, requirePermission("documents:create"), asy
       `UPDATE scanned_documents SET extracted_text = ?, parsed_date = ?, parsed_amount = ?, parsed_fields = ? WHERE id = ?`,
       [finalText, parsedDate, parsedAmount, JSON.stringify(parsedFields), req.params.id]
     );
-    res.json({ id: Number(req.params.id), extracted_text: finalText, parsed_date: parsedDate, parsed_amount: parsedAmount });
+    res.json({
+      id: Number(req.params.id),
+      extracted_text: finalText,
+      parsed_date: parsedDate,
+      parsed_amount: parsedAmount,
+      parsed_items: parseItemTable(finalText),
+    });
   } catch (err) {
     console.error("[documents edit error]", err);
     res.status(500).json({ message: "서버 오류가 발생했습니다." });

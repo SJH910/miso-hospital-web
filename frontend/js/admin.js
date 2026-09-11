@@ -49,6 +49,45 @@ function formatDocAmount(amount) {
     return amount == null ? '-' : `${amount.toLocaleString()}원`;
 }
 
+function formatFileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// [2026-09-11] "항목/금액"이 표로 인식됐을 때만 표시(parseItemTable, best-effort) - 못 알아본
+// 문서는 그냥 원문 텍스트만 보이고 표는 안 뜬다. 신뢰할 수 없는 OCR 값이라 textContent만 사용.
+function renderItemTable(container, items) {
+    container.innerHTML = '';
+    if (!items || items.length === 0) return;
+
+    const table = document.createElement('table');
+    table.className = 'ocr-item-table';
+    const thead = document.createElement('thead');
+    thead.innerHTML = ''; // 헤더 셀은 고정 텍스트라 직접 만듦
+    const headRow = document.createElement('tr');
+    const th1 = document.createElement('th');
+    th1.textContent = '항목';
+    const th2 = document.createElement('th');
+    th2.textContent = '금액';
+    headRow.append(th1, th2);
+    thead.appendChild(headRow);
+
+    const tbody = document.createElement('tbody');
+    items.forEach((item) => {
+        const tr = document.createElement('tr');
+        const labelTd = document.createElement('td');
+        labelTd.textContent = item.label;
+        const amountTd = document.createElement('td');
+        amountTd.textContent = item.amount;
+        tr.append(labelTd, amountTd);
+        tbody.appendChild(tr);
+    });
+
+    table.append(thead, tbody);
+    container.appendChild(table);
+}
+
 // [2026-09-10] "저장된 문서"를 카드 목록 대신 표(환자용 records.html과 같은 패턴)로 바꾸고,
 // 행을 클릭하면 아래 documentDetail 패널 하나에 원문/이미지가 채워지는 구조로 변경 —
 // 이전엔 항목마다 펼치는 카드였는데, 표로 훑어보고 클릭해서 상세를 보는 흐름이 환자 쪽과
@@ -109,6 +148,10 @@ function loadDetail(doc, dateTd, amountTd) {
     refreshMeta();
     detail.appendChild(meta);
 
+    const itemTableContainer = document.createElement('div');
+    renderItemTable(itemTableContainer, doc.parsed_items);
+    detail.appendChild(itemTableContainer);
+
     const grid = document.createElement('div');
     grid.className = 'record-detail__grid';
 
@@ -150,7 +193,9 @@ function loadDetail(doc, dateTd, amountTd) {
             doc.extracted_text = result.extracted_text;
             doc.parsed_date = result.parsed_date;
             doc.parsed_amount = result.parsed_amount;
+            doc.parsed_items = result.parsed_items;
             refreshMeta();
+            renderItemTable(itemTableContainer, doc.parsed_items);
             dateTd.textContent = formatDocDate(doc.parsed_date || doc.created_at);
             amountTd.textContent = formatDocAmount(doc.parsed_amount);
             showToast('수정을 저장했습니다.', 'success');
@@ -207,15 +252,28 @@ function renderConfidencePreview(text) {
 // (fetch로 서버에서 받아올 필요가 없음 - 저장된 문서 목록/환자 상세 화면과는 다른 상황).
 document.getElementById('scanImage').addEventListener('change', function () {
     const preview = document.getElementById('scanImagePreview');
+    const fileInfoCard = document.getElementById('fileInfoCard');
+    const processingCard = document.getElementById('processingCard');
     const file = this.files[0];
     if (preview.src) URL.revokeObjectURL(preview.src);
+    // 새 파일을 고르면 이전 파일의 처리 상태(소요시간 등)는 더 이상 유효하지 않으므로 숨김 -
+    // 다시 "텍스트 추출"을 눌러야 새 값으로 채워짐.
+    processingCard.hidden = true;
     if (!file) {
         preview.hidden = true;
         preview.removeAttribute('src');
+        fileInfoCard.hidden = true;
         return;
     }
     preview.src = URL.createObjectURL(file);
     preview.hidden = false;
+
+    // [2026-09-11] 실측 가능한 값만 표시(파일명/크기/형식) - 로컬 File 객체에서 바로 읽으면
+    // 되므로 서버 왕복 불필요.
+    document.getElementById('fileInfoName').textContent = file.name;
+    document.getElementById('fileInfoSize').textContent = formatFileSize(file.size);
+    document.getElementById('fileInfoType').textContent = file.type || '알 수 없음';
+    fileInfoCard.hidden = false;
 });
 
 document.getElementById('scanButton').addEventListener('click', async function () {
@@ -252,6 +310,12 @@ document.getElementById('scanButton').addEventListener('click', async function (
         resultEl.value = result.text;
         renderConfidencePreview(result.text);
         statusEl.textContent = result.text ? '추출 완료.' : '이미지에서 텍스트를 찾지 못했습니다.';
+
+        // [2026-09-11] 서버가 실제로 측정해서 돌려준 소요시간(ms) - 꾸며낸 숫자 아님.
+        if (typeof result.processingMs === 'number') {
+            document.getElementById('processingTime').textContent = `${(result.processingMs / 1000).toFixed(1)}초`;
+            document.getElementById('processingCard').hidden = false;
+        }
     } catch (err) {
         statusEl.textContent = '텍스트 추출 중 오류가 발생했습니다.';
     } finally {

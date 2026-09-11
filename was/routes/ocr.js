@@ -77,13 +77,16 @@ router.post("/", verifyCsrfToken, requirePermission("ocr:scan"), ocrLimiter, (re
     }
 
     try {
+      const startedAt = Date.now();
       const workers = await getWorkerPool();
       const worker = workers[nextWorkerIndex % workers.length];
       nextWorkerIndex += 1;
 
       const { data } = await worker.recognize(req.file.buffer);
       const text = (data.text || "").trim().slice(0, MAX_TEXT_LENGTH);
-      res.json({ text });
+      // [2026-09-11] 관리자 화면에 "처리 시간"을 보여주기 위한 실측값 - 꾸밈이 아니라
+      // 실제로 이 요청이 Tesseract 인식에 걸린 시간(ms)을 그대로 반환한다.
+      res.json({ text, processingMs: Date.now() - startedAt, fileSize: req.file.buffer.length });
     } catch (e) {
       // [보안 강화 #7-b 정보 노출] 상세 에러는 서버 로그에만 남기고 응답에는 일반 메시지만 반환
       console.error("[ocr error]", e);

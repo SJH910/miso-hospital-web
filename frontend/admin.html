@@ -24,9 +24,47 @@
 
         <section class="write-section">
             <h3>진단서 / 처방전 / 영수증 이미지 업로드</h3>
-            <!-- [2026-09-10] 추출된 텍스트(왼쪽, 작게) / 업로드한 원본 이미지 미리보기(오른쪽)로 2단 배치 -->
-            <div class="record-detail__grid">
-                <div class="record-detail__text-col">
+            <!-- [2026-09-11] 카드 레이아웃으로 재구성 - 왼쪽(업로드/미리보기/파일정보/처리상태),
+                 오른쪽(OCR 결과/수정/저장). 처리 상태·파일 정보는 실측 가능한 값만(파일명/크기/
+                 형식/소요시간) - 해상도나 가짜 단계 진행바 같은 장식용 수치는 넣지 않음. -->
+            <div class="ocr-layout">
+                <div>
+                    <div class="panel ocr-card">
+                        <h4>문서 이미지 업로드</h4>
+                        <div class="input-group">
+                            <label for="scanImage">이미지 파일 (JPEG/PNG/WEBP, 5MB 이하)</label>
+                            <input type="file" id="scanImage" accept="image/png,image/jpeg,image/webp">
+                        </div>
+                        <button type="button" id="scanButton" class="btn-primary">텍스트 추출</button>
+                        <p id="scanStatus"></p>
+                    </div>
+
+                    <div class="panel ocr-card">
+                        <h4>원본 문서 미리보기</h4>
+                        <img id="scanImagePreview" class="record-detail__image" alt="선택한 원본 이미지 미리보기" hidden>
+                    </div>
+
+                    <div class="panel ocr-card" id="fileInfoCard" hidden>
+                        <h4>파일 정보</h4>
+                        <dl class="ocr-info-list">
+                            <dt>파일명</dt><dd id="fileInfoName"></dd>
+                            <dt>파일 크기</dt><dd id="fileInfoSize"></dd>
+                            <dt>이미지 형식</dt><dd id="fileInfoType"></dd>
+                        </dl>
+                    </div>
+
+                    <div class="panel ocr-card" id="processingCard" hidden>
+                        <h4>처리 상태</h4>
+                        <dl class="ocr-info-list">
+                            <dt>파일 검증</dt><dd>완료</dd>
+                            <dt>텍스트 추출</dt><dd>완료 (Tesseract)</dd>
+                            <dt>소요 시간</dt><dd id="processingTime"></dd>
+                        </dl>
+                    </div>
+                </div>
+
+                <div class="panel ocr-card">
+                    <h4>OCR 추출 결과</h4>
                     <div class="input-group">
                         <label>인식 결과 미리보기 (OCR이 잘못 읽었을 수 있으니 아래 텍스트와 대조해보세요)</label>
                         <div id="confidencePreview" class="ocr-preview">이미지를 추출하면 여기에 표시됩니다.</div>
@@ -52,15 +90,6 @@
                     </div>
                     <button type="button" id="saveButton" class="btn-primary">저장</button>
                     <p id="saveStatus"></p>
-                </div>
-                <div class="record-detail__image-col">
-                    <div class="input-group">
-                        <label for="scanImage">이미지 파일 (JPEG/PNG/WEBP, 5MB 이하)</label>
-                        <input type="file" id="scanImage" accept="image/png,image/jpeg,image/webp">
-                    </div>
-                    <button type="button" id="scanButton" class="btn-primary">텍스트 추출</button>
-                    <p id="scanStatus"></p>
-                    <img id="scanImagePreview" class="record-detail__image" alt="선택한 원본 이미지 미리보기" hidden>
                 </div>
             </div>
         </section>

@@ -622,6 +622,74 @@ body.landing-page {
     cursor: pointer;
 }
 
+/* [2026-09-11] admin.html "문서 스캔" 화면 카드 레이아웃 재구성 */
+.ocr-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.4fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.ocr-card {
+    margin: 0 0 20px;
+}
+
+.ocr-card:last-child {
+    margin-bottom: 0;
+}
+
+.ocr-card h4 {
+    margin: 0 0 14px;
+    color: var(--navy);
+    font-size: 15px;
+}
+
+.ocr-info-list {
+    margin: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    row-gap: 8px;
+    column-gap: 14px;
+    font-size: 13px;
+}
+
+.ocr-info-list dt {
+    color: var(--text-muted);
+}
+
+.ocr-info-list dd {
+    margin: 0;
+    color: #333;
+    text-align: right;
+    word-break: break-all;
+}
+
+/* [2026-09-11] "항목/금액" 표(parseItemTable, best-effort 인식됐을 때만 표시) */
+.ocr-item-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 14px;
+}
+
+.ocr-item-table th,
+.ocr-item-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eef0f2;
+    text-align: left;
+}
+
+.ocr-item-table td:last-child,
+.ocr-item-table th:last-child {
+    text-align: right;
+}
+
+@media (max-width: 900px) {
+    .ocr-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
 .board-table th {
     text-align: left;
     color: var(--navy);
