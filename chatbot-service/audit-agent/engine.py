@@ -5,6 +5,32 @@ from .crypto import AuditCrypto
 from .masking import AuditMasking  # 새롭게 추가된 마스킹 모듈
 from .risk_classification import classify_risk
 
+# [Discord 실시간 알림] audit_notify는 chatbot-service/ 바로 아래에 있는 모듈이라(이 파일이
+# 속한 audit-agent 패키지 밖) 상대 import가 안 됨. uvicorn --app-dir로 뜰 때는 chatbot-service가
+# 이미 sys.path에 있어 바로 import되지만, 이 패키지만 단독으로 로드되는 경우를 대비해
+# log_audit_tool.py와 동일한 방식(파일 위치 기준 절대경로)으로 한 번 더 챙긴다.
+try:
+    from audit_notify import notify_discord
+except ImportError:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from audit_notify import notify_discord
+
+
+def _extract_actor(payload):
+    # log_audit_tool.py의 read_audit_jsonl()과 동일한 규칙 - patient_id를 kwargs 또는
+    # 숫자로만 이뤄진 첫 인자에서 찾는다(중복이지만 감사 로그 파싱 로직이 아니라 알림 라벨용
+    # 부가 정보라, 저기 모듈을 끌어오기보다 이 정도 반복은 감수).
+    input_data = payload.get("input", {}) if isinstance(payload, dict) else {}
+    kwargs = input_data.get("kwargs", {}) if isinstance(input_data, dict) else {}
+    args = input_data.get("args", []) if isinstance(input_data, dict) else []
+    actor = kwargs.get("patient_id") if isinstance(kwargs, dict) else None
+    if actor is None and args and str(args[0]).isdigit():
+        actor = args[0]
+    return actor
+
+
 class AuditEngine:
     def __init__(self, encryption_key: bytes, retention_days: int = 90, log_file_path: str = None):
         self.hash_chain = HashChain(log_file_path)
@@ -28,6 +54,15 @@ class AuditEngine:
         # payload_encrypted 안이 아니라 최상위 평문 필드로 남겨야, 복호화 없이도 등급으로 필터링/스캔 가능.
         risk_level = classify_risk(action, masked_payload)
         print(f"👉 [Step 1-1] 위험도 분류 완료: {risk_level}")
+
+        # [Discord 실시간 알림] risk_level이 high면 관리자 웹 세션과 분리된 채널로 즉시 알림 -
+        # 실패해도(웹훅 미설정, 네트워크 오류) 챗봇 응답 자체를 막으면 안 되므로 반드시 감싸서
+        # 삼킨다(notify_discord 자체도 내부에서 한 번 더 삼킴 - 이중 방어).
+        if risk_level == "high":
+            try:
+                notify_discord(action, actor=_extract_actor(payload), detail=f"event_id={event_id}")
+            except Exception as e:
+                print(f"[discord notify hook error] {type(e).__name__}: {e}")
 
         # 2. 마스킹이 완료된 안전한 데이터를 암호화
         encrypted_payload = self.crypto.encrypt_payload(masked_payload)
