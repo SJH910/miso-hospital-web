@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+import hmac
 import sqlite3
 import os
 from pathlib import Path
@@ -29,6 +30,22 @@ app.add_middleware(
     allow_methods=["POST"],
     allow_headers=["*"],
 )
+
+# [보안 강화 2026-09-10] CORS는 브라우저의 cross-origin만 막지, curl 등으로 이 포트에 직접
+# 요청을 보내는 건 못 막는다 - patient_id를 아무 검증 없이 신뢰하던 /chat이 실질적으로
+# IDOR이었음(임의 patient_id로 다른 환자 정보 조회 가능). was와 공유하는 비밀키를 요구해서
+# 이 값을 모르는 호출자는 아예 거부한다. .env에 없으면 여기서 바로 죽게 해서(AUDIT_ENCRYPTION_KEY와
+# 같은 fail-fast 패턴) "키 설정을 깜빡한 채로 조용히 무방비 상태로 뜨는" 상황을 막는다.
+INTERNAL_SERVICE_KEY = os.getenv("CHATBOT_SERVICE_KEY")
+if not INTERNAL_SERVICE_KEY:
+    raise RuntimeError("CHATBOT_SERVICE_KEY가 .env 파일에 설정되지 않았습니다.")
+
+
+def verify_internal_caller(request: Request):
+    provided = request.headers.get("x-internal-auth", "")
+    # 타이밍 사이드채널 방지를 위해 단순 문자열 비교(==) 대신 상수 시간 비교 사용.
+    if not hmac.compare_digest(provided, INTERNAL_SERVICE_KEY):
+        raise HTTPException(status_code=401, detail="이 서비스는 내부 호출만 허용합니다.")
 
 # --- 감사 로그 암호화 키 ---
 # 실행 위치(cwd)에 상관없이 항상 프로젝트 루트의 같은 파일을 가리키도록 절대경로로 고정.
@@ -88,6 +105,8 @@ class ChatResponse(BaseModel):
 @app.post("/chat", response_model=ChatResponse)
 @limiter.limit("20/minute")
 async def chat_endpoint(req: ChatRequest, request: Request):
+    verify_internal_caller(request)
+
     original_question = req.question
 
     if not original_question.strip():

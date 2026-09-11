@@ -57,7 +57,11 @@ router.post("/", verifyCsrfToken, async (req, res) => {
   try {
     const upstream = await fetch(`${config.chatbotServiceUrl}/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // [보안 강화 2026-09-10] chatbot-service가 이 헤더로 호출자를 검증 - config.js 참고
+        "X-Internal-Auth": config.chatbotServiceKey,
+      },
       body: JSON.stringify({
         question: message,
         patient_id: req.session.patientId, // 세션에서만 가져옴 - 클라이언트가 조작 불가 (IDOR 방지)

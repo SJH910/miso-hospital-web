@@ -35,5 +35,12 @@ module.exports = {
   // [챗봇 통합] Python RAG 마이크로서비스 주소. Node는 질문+patient_id만 넘기고 답변만 받아온다.
   chatbotServiceUrl: process.env.CHATBOT_SERVICE_URL || "http://localhost:8000",
 
+  // [보안 강화 2026-09-10] chatbot-service가 이 값을 헤더로 요구하는 요청만 처리하도록 함 -
+  // 원래는 chatbot-service가 patient_id를 아무 검증 없이 body 그대로 신뢰해서, 8000번 포트에
+  // 직접(curl 등) 접근 가능하면 임의 patient_id로 다른 환자 정보를 조회할 수 있는 IDOR이었음.
+  // chatbot-service/.env의 CHATBOT_SERVICE_KEY와 반드시 같은 값이어야 함(둘 다 이 값을 아는
+  // 서비스끼리만 통신 가능하다는 전제 - 공유 비밀키 방식).
+  chatbotServiceKey: process.env.CHATBOT_SERVICE_KEY || "",
+
   port: Number(process.env.PORT || 3000),
 };
