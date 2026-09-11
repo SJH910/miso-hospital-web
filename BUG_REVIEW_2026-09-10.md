@@ -14,7 +14,10 @@
 - [x] **동기 블로킹 호출이 `async def` 핸들러 안에 그대로 있음 — 수정 완료(2026-09-11, `feature/ocr`)** (`chatbot-service/app.py` `chat_endpoint`) — pymysql DB 쿼리(`tools_db.py`), Gemini 호출(`3-1-llm.py`), `sqlite3.connect`가 스레드풀 오프로드 없이 이벤트루프에서 그대로 실행됨. `async def`는 FastAPI가 자동으로 스레딩 안 해주므로, 느린 요청 하나가 동시 요청 전체를 막음(운영 규모 병목).
   - **수정**: 확인해보니 `chat_endpoint` 안에 `await`가 단 하나도 없었음("async인 척하는 sync 함수") — `async def` → `def`로 한 단어만 변경. FastAPI는 sync `def` 라우트를 자동으로 별도 스레드풀에서 돌려주므로, 내부 코드는 전혀 안 건드리고 이벤트 루프 블로킹만 해소됨.
   - **검증**: 기능 회귀 없음(정상 질문 응답, 인증 401, 주제 제한 전부 정상). 동시성 개선 실측: 순차 3회 28.8초(요청당 평균 ~9.6초) vs 동시 3회(병렬 전송) 10.8초 — 수정 전이었다면 이벤트 루프가 막혀 순차와 비슷한 시간이 나왔을 것, 실제로 세 요청이 병렬 처리됨을 확인.
-- [ ] **`admin-totp-setup.js` TOTP 등록 시작 버튼에 CSRF 토큰 누락** (`frontend/js/admin-totp-setup.js` `startEnrollButton`, `POST /api/totp/setup`) — 같은 파일의 나머지 두 버튼(확인/해제)엔 `X-CSRF-Token`이 붙어있는데 이것만 빠짐. 프로젝트 전체에서 CSRF 토큰이 빠진 유일한 상태변경 POST/PATCH/DELETE 호출(다른 파일 전수 대조 확인).
+- [x] **`admin-totp-setup.js` TOTP 등록 시작 버튼에 CSRF 토큰 누락 — 수정 완료(2026-09-11, `feature/ocr`)** (`frontend/js/admin-totp-setup.js` `startEnrollButton`, `POST /api/totp/setup`) — 같은 파일의 나머지 두 버튼(확인/해제)엔 `X-CSRF-Token`이 붙어있는데 이것만 빠짐. 프로젝트 전체에서 CSRF 토큰이 빠진 유일한 상태변경 POST/PATCH/DELETE 호출(다른 파일 전수 대조 확인).
+  - **실제 위험도**: `/setup`은 새 비밀키(secret+QR)를 응답으로 돌려주기만 할 뿐 이것만으로 계정 상태가 바뀌진 않음 — 진짜 활성화는 CSRF 보호가 걸려있는 `/verify-setup`에서 인증앱 코드까지 맞아야 확정되므로 즉각적인 악용 경로는 제한적이었으나, "모든 상태변경 요청은 CSRF 검증"이라는 프로젝트 전체 원칙에서 벗어난 유일한 구멍이라 수정.
+  - **수정**: `was/routes/totp.js`의 `POST /setup`에 `verifyCsrfToken` 미들웨어 추가, `frontend/js/admin-totp-setup.js`의 해당 fetch에 `X-CSRF-Token` 헤더 추가 — 같은 파일의 나머지 두 요청과 동일한 패턴으로 통일.
+  - **검증**: WAS 재시작 후 curl로 확인 — CSRF 토큰 없이 `POST /api/totp/setup` → `403`, 정상 토큰 포함 → `200`.
 
 ## 🟡 Medium
 
