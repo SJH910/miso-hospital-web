@@ -42,10 +42,50 @@ function renderPost(post, index) {
     inquiryList.appendChild(tr);
 }
 
-function renderList(posts) {
+// [2026-09-11] 표 아래 페이지 번호 추가. 서버는 전체 목록을 한 번에 내려주므로(양이 많지
+// 않은 문의 게시판이라 서버 페이징까지는 불필요), 클라이언트에서 잘라서 보여주기만 한다.
+const PAGE_SIZE = 10;
+let currentPage = 1;
+
+function renderList(posts, resetPage = true) {
+    if (resetPage) currentPage = 1;
+    const totalPages = Math.max(1, Math.ceil(posts.length / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    const start = (currentPage - 1) * PAGE_SIZE;
+
     inquiryList.innerHTML = '';
     emptyState.hidden = posts.length > 0;
-    posts.forEach(renderPost);
+    posts.slice(start, start + PAGE_SIZE).forEach((post, i) => renderPost(post, start + i));
+    renderPagination(posts, totalPages);
+}
+
+function renderPagination(posts, totalPages) {
+    const container = document.getElementById('pagination');
+    container.innerHTML = '';
+
+    function makeButton(label, targetPage, { active = false, disabled = false } = {}) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = label;
+        if (active) btn.className = 'pagination__page--active';
+        if (disabled) {
+            btn.disabled = true;
+        } else {
+            btn.addEventListener('click', () => {
+                currentPage = targetPage;
+                renderList(posts, false);
+            });
+        }
+        return btn;
+    }
+
+    container.appendChild(makeButton('«', 1, { disabled: currentPage === 1 }));
+    container.appendChild(makeButton('‹', currentPage - 1, { disabled: currentPage === 1 }));
+    for (let page = 1; page <= totalPages; page++) {
+        container.appendChild(makeButton(String(page), page, { active: page === currentPage }));
+    }
+    container.appendChild(makeButton('›', currentPage + 1, { disabled: currentPage === totalPages }));
+    container.appendChild(makeButton('»', totalPages, { disabled: currentPage === totalPages }));
 }
 
 async function loadUserInfo() {
