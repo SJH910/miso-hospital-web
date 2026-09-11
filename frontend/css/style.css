@@ -553,10 +553,30 @@ body.landing-page {
     margin: 0 0 18px;
 }
 
+/* [2026-09-11] 병원 공지 게시판 스타일 참고해서 재구성 - 왼쪽(카테고리+검색)/오른쪽(글쓰기)로 분리 */
 .board-toolbar {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 10px;
     margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.board-toolbar__filters {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-width: 240px;
+}
+
+.board-toolbar select {
+    padding: 10px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #fff;
+    color: #333;
+    font-size: 14px;
 }
 
 .board-toolbar input[type="text"] {
@@ -564,6 +584,24 @@ body.landing-page {
     padding: 10px 14px;
     border: 1px solid #ccc;
     border-radius: 6px;
+}
+
+.btn-write {
+    flex: none;
+    width: auto;
+    padding: 10px 22px;
+    background: var(--navy);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-write:hover {
+    background: var(--navy-dark);
 }
 
 .board-table {

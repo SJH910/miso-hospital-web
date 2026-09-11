@@ -44,7 +44,16 @@
         <section class="panel list-section">
             <h3 id="listHeading">나의 문의 내역</h3>
             <div class="board-toolbar">
-                <input type="text" id="searchInput" placeholder="제목으로 검색">
+                <div class="board-toolbar__filters">
+                    <select id="categorySelect" disabled title="현재는 카테고리 구분이 없습니다">
+                        <option>전체</option>
+                    </select>
+                    <input type="text" id="searchInput" placeholder="제목으로 검색">
+                </div>
+                <!-- [2026-09-11] "문의 답변" 상단 네비 링크를 없애고 여기로 옮김 - admin만 board.html에
+                     들어오므로(staff는 board.js가 admin-board.html로 자동 이동) admin에게만 보임. -->
+                <button type="button" class="btn-write" id="goToAdminBoardBtn" hidden>문의 답변</button>
+                <button type="button" class="btn-write" id="scrollToWriteBtn">글쓰기</button>
             </div>
             <table class="board-table">
                 <thead>

@@ -7,7 +7,9 @@ const NAV_ITEMS = [
     { href: 'admin.html', label: '문서 스캔', roles: ['admin'] },
     { href: 'admin-holidays.html', label: '휴진일 관리', roles: ['admin'] },
     { href: 'admin-reservations.html', label: '예약 관리', roles: ['admin', 'staff'] },
-    { href: 'admin-board.html', label: '문의 답변', roles: ['admin', 'staff'] },
+    // [2026-09-11] "문의 답변"은 상단 네비에서 빼고 board.html 안의 버튼으로 이동 -
+    // admin-board.js 참고. staff는 board.html 진입 시 자동으로 admin-board.html로 보내지므로
+    // (board.js의 loadUserInfo) 이 링크가 없어도 여전히 도달 가능.
     { href: 'admin-accounts.html', label: '계정 관리', roles: ['admin', 'staff'] },
     { href: 'admin-totp-setup.html', label: '로그인 보안', roles: ['admin'] },
     { href: 'reservation.html', label: '진료 예약', roles: ['patient'] },

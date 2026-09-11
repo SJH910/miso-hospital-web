@@ -71,6 +71,11 @@ async function loadUserInfo() {
     if (me.role === 'patient') {
         document.getElementById('chatWidget').style.display = 'block';
     }
+    // [2026-09-11] "문의 답변" 링크를 상단 네비에서 빼고 여기로 옮김 - staff는 이미 위에서
+    // admin-board.html로 리다이렉트돼서 이 지점에 도달 안 하므로, 사실상 admin에게만 보임.
+    if (me.role === 'admin' || me.role === 'staff') {
+        document.getElementById('goToAdminBoardBtn').hidden = false;
+    }
 }
 
 async function loadMyInquiries() {
@@ -108,6 +113,15 @@ document.getElementById('inquiryForm').addEventListener('submit', async function
 
     document.getElementById('title').value = '';
     document.getElementById('content').value = '';
+});
+
+document.getElementById('goToAdminBoardBtn').addEventListener('click', () => {
+    window.location.href = 'admin-board.html';
+});
+
+document.getElementById('scrollToWriteBtn').addEventListener('click', () => {
+    document.getElementById('writeSection').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('title').focus();
 });
 
 searchInput.addEventListener('input', () => {
