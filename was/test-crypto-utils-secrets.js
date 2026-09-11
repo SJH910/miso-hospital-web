@@ -71,5 +71,19 @@ test("기존 주민번호 마스킹 유지", () => {
   assert.ok(!maskPii("제 주민번호는 900101-1234567 입니다.").includes("1234567"));
 });
 
+// [2026-09-11 회귀 테스트] 구분자 변형/구형 전화번호 국번 우회 버그(BUG_REVIEW_2026-09-10.md,
+// pii_masking.py와 같이 발견된 항목) - 이전엔 마스킹 없이 그대로 통과되던 케이스들.
+test("점으로 구분한 주민번호가 마스킹된다", () => {
+  assert.ok(!maskPii("주민번호 900101.1234567").includes("1234567"));
+});
+test("점으로 구분한 전화번호가 마스킹된다", () => {
+  assert.ok(maskPii("연락처 010.1234.5678").includes("****"));
+});
+test("구형 국번(3자리 중간) 전화번호가 마스킹된다", () => {
+  const result = maskPii("연락처 011-234-5678");
+  assert.ok(result.includes("****"));
+  assert.ok(!result.includes("011-234-5678"));
+});
+
 console.log(`\n${failed === 0 ? "모두 통과" : failed + "개 실패"}`);
 process.exit(failed === 0 ? 0 : 1);
