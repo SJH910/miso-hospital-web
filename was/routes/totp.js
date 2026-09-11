@@ -27,7 +27,7 @@ router.get("/status", async (req, res) => {
 // 1단계: 새 비밀키를 생성해서 "아직 저장하지 않고" 클라이언트에 보여준다.
 // 클라이언트가 이 값을 인증 앱에 입력한 뒤, 앱이 만든 코드로 /verify-setup을 호출해야
 // 실제 DB에 저장된다 - 등록 과정에서 오타/스캔 실패로 망가진 비밀키가 그대로 저장되는 것을 방지.
-router.post("/setup", (req, res) => {
+router.post("/setup", verifyCsrfToken, (req, res) => {
   const secret = generateTotpSecret();
   const otpauthUri = buildOtpAuthUri(secret, req.session.patientName || `patient${req.session.patientId}`);
   res.json({ secret, otpauthUri });

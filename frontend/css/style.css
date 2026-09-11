@@ -493,6 +493,52 @@ body.landing-page {
     color: var(--navy);
     font-weight: 500;
     font-size: 15px;
+    position: relative; /* 안의 .user-dropdown을 이 기준으로 절대 위치시키기 위함 */
+}
+
+/* [2026-09-11] admin 전용 기능들("문서 스캔"/"휴진일 관리" 등)을 상단 네비에서 빼고,
+   "{이름} 님" 위에 마우스를 올리면 뜨는 드롭다운으로 옮김(js/nav.js의 renderUserMenu 참고).
+   .has-dropdown은 admin일 때만 nav.js가 붙여주므로, 커서 모양도 그때만 바뀐다. */
+.user-chip.has-dropdown {
+    cursor: pointer;
+}
+
+.user-dropdown {
+    display: none;
+    position: absolute;
+    /* [2026-09-11 수정] margin-top으로 여백을 주면 텍스트 밑에서 드롭다운 시작점까지 "빈 틈"이
+       생기는데, 그 틈을 지나가는 동안은 마우스가 .user-chip 박스에도 .user-dropdown 박스에도
+       안 걸쳐 있어서 :hover가 풀려 display:none이 돼버림(드롭다운으로 내려가기 전에 사라짐).
+       margin 대신 top을 텍스트 바로 밑(빈틈 0)으로 붙이고, 여백은 박스 안쪽 padding-top으로만
+       줘서 - 박스 자체는 항상 텍스트에 붙어있어 마우스가 안 끊기고, 여백은 그대로 보임. */
+    top: 100%;
+    right: 0;
+    background: #fff;
+    border: 1px solid #eef0f2;
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(20, 43, 71, 0.12);
+    padding: 10px 6px 6px;
+    min-width: 150px;
+    z-index: 20;
+}
+
+.user-chip.has-dropdown:hover .user-dropdown {
+    display: block;
+}
+
+.user-dropdown a {
+    display: block;
+    padding: 9px 12px;
+    border-radius: 6px;
+    color: var(--navy);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.user-dropdown a:hover {
+    background: var(--mint);
 }
 
 .btn-logout {
