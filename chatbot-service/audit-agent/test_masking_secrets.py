@@ -51,6 +51,25 @@ class TestAuditMaskingRegression(unittest.TestCase):
         masked = self.masker.mask_payload(payload)
         self.assertNotIn("1234567", str(masked))
 
+    # [2026-09-11 회귀 테스트] 구분자 변형/구형 전화번호 국번 우회 버그(BUG_REVIEW_2026-09-10.md,
+    # was/crypto-utils.js와 같이 발견된 항목) - 이전엔 마스킹 없이 그대로 통과되던 케이스들.
+    def test_dot_separated_ssn_is_masked(self):
+        payload = {"input": {"args": ["주민번호 900101.1234567"]}}
+        masked = self.masker.mask_payload(payload)
+        self.assertNotIn("1234567", str(masked))
+
+    def test_dot_separated_phone_is_masked(self):
+        payload = {"input": {"args": ["연락처 010.1234.5678"]}}
+        masked = self.masker.mask_payload(payload)
+        self.assertIn("****", str(masked))
+
+    def test_old_prefix_phone_with_3digit_middle_is_masked(self):
+        # 011/016/017/018/019 구형 국번은 중간 구간이 3자리(예: 011-234-5678)
+        payload = {"input": {"args": ["연락처 011-234-5678"]}}
+        masked = self.masker.mask_payload(payload)
+        self.assertIn("****", str(masked))
+        self.assertNotIn("011-234-5678", str(masked))
+
     def test_existing_email_masking_still_works(self):
         payload = {"input": {"args": ["test@example.com"]}}
         masked = self.masker.mask_payload(payload)

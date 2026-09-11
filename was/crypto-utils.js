@@ -62,8 +62,30 @@ function maskRrn(plainRrn) {
 // 이 함수는 "채팅 이력을 환자에게 다시 보여줄 때" 마스킹이 목적이라 역할이 다르다(둘 다 필요).
 // 내부 URL/API 키 탐지 규칙은 Python의 pii_masking.py(mask_secrets)와 동일하게 맞춰뒀다 -
 // 언어가 달라 import는 못 해도, 규칙 자체는 반드시 같이 업데이트할 것 (test-crypto-utils-secrets.js 참고).
-const SSN_PATTERN = /\d{6}-\d{7}/g;
-const PHONE_PATTERN = /010-\d{4}-\d{4}/g;
+//
+// [보안 수정 2026-09-11] SSN_PATTERN/PHONE_PATTERN이 하이픈 구분자·"010-" 접두사 하나만
+// 하드코딩돼 있어서, 점/공백으로 구분하거나("900101.1234567") 010이 아닌 구형 국번
+// (011/016/017/018/019)이면 매칭 자체가 안 되고 그대로 통과되던 버그가 있었음
+// (BUG_REVIEW_2026-09-10.md 참고 - Python 쪽 pii_masking.py는 2026-09-10에 구분자 문제를
+// 먼저 고쳤는데 이 파일엔 그 수정이 반영되지 않았었음). Python과 동일한 SEPARATOR 방식으로
+// 통일해서 재구성한다 - 언어가 달라 코드 공유는 못 해도 정규식이 찾는 "형태"는 반드시 맞춰야
+// 하므로, pii_masking.py를 고칠 때는 이 파일도 같이 볼 것(반대 방향도 마찬가지).
+const SEPARATOR = "[\\s\\-~_.]";
+
+function spacedDigits(count) {
+  return Array(count).fill("\\d").join(SEPARATOR + "*");
+}
+
+const SSN_PATTERN = new RegExp(`(${spacedDigits(6)})${SEPARATOR}*(${spacedDigits(7)})`, "g");
+
+// 010/011/016/017/018/019 전부 허용("0"+"1"+[016789]). 중간 구간은 010 등 신형(4자리)과
+// 011~019 구형(3자리, 예: 011-234-5678) 둘 다 허용 - 4자리를 먼저 시도해야 실제 4자리
+// 번호가 3자리로 잘못 잘려서 마지막 구간(고정 4자리)과 안 맞는 상황을 피할 수 있다.
+const PHONE_PREFIX = `0${SEPARATOR}*1${SEPARATOR}*[016789]`;
+const PHONE_MIDDLE = `(?:${spacedDigits(4)}|${spacedDigits(3)})`;
+const PHONE_LAST = spacedDigits(4);
+const PHONE_PATTERN = new RegExp(`(${PHONE_PREFIX})${SEPARATOR}*(${PHONE_MIDDLE})${SEPARATOR}*(${PHONE_LAST})`, "g");
+
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 // --- 내부 URL / 사설 IP ---
@@ -143,11 +165,10 @@ function maskPii(text) {
   if (typeof text !== "string") return text;
   // 내부 URL/API 키를 먼저 거르고, 그다음 기존 PII 패턴을 적용한다 (Python 쪽과 동일한 순서).
   let masked = maskSecrets(text);
-  masked = masked.replace(SSN_PATTERN, (m) => `${m.split("-")[0]}-*******`);
-  masked = masked.replace(PHONE_PATTERN, (m) => {
-    const [a, , c] = m.split("-");
-    return `${a}-****-${c}`;
-  });
+  // [보안 수정 2026-09-11] 구분자가 하이픈이 아닐 수 있어서(점/공백 등) 매칭된 문자열을
+  // m.split("-")로 쪼개면 실패한다 - 정규식 캡처 그룹에서 직접 꺼내 써야 함.
+  masked = masked.replace(SSN_PATTERN, (m, front) => `${front}-*******`);
+  masked = masked.replace(PHONE_PATTERN, (m, prefix, _middle, last) => `${prefix}-****-${last}`);
   masked = masked.replace(EMAIL_PATTERN, (m) => {
     const [local, domain] = m.split("@");
     const visible = local.length > 3 ? local.slice(0, 3) : local[0];
