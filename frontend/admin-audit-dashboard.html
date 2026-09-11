@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - 감사 로그 대시보드</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <span id="navLinks"></span>
+            <span class="user-chip" id="userInfo"></span>
+            <button type="button" class="btn-logout" id="logoutBtn">로그아웃</button>
+        </nav>
+    </header>
+
+    <div class="page-header">
+        <p class="breadcrumb"><a href="index.html">홈</a> &gt; 감사 로그 대시보드</p>
+        <h1>감사 로그 대시보드</h1>
+        <p style="color:#6b7785;">로그인 이상탐지·챗봇 도구 호출 위험도, 대화 원문 PII 잔존 여부를 한 화면에서 확인합니다.</p>
+    </div>
+
+    <div class="page-body">
+        <p id="chatbotErrorBanner" class="audit-error-banner" hidden></p>
+
+        <section class="panel" style="margin-bottom:24px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
+                <h3 style="margin:0;">위험도 요약 (로그인 이상탐지 + 챗봇 도구 호출)</h3>
+                <button type="button" id="refreshButton" class="btn-action" style="width:auto; padding:8px 16px;">새로고침</button>
+            </div>
+            <div class="kpi-row" id="kpiRow"></div>
+            <p id="generatedAt" style="color:#97a1ac; font-size:12.5px; margin:14px 0 0;"></p>
+        </section>
+
+        <section class="panel list-section" style="margin-bottom:24px;">
+            <h3>주요 탐지 내역 (Critical / High)</h3>
+            <div style="overflow-x:auto;">
+                <table class="board-table">
+                    <thead>
+                        <tr>
+                            <th>등급</th>
+                            <th>소스</th>
+                            <th>발생 시각</th>
+                            <th>계정</th>
+                            <th>이벤트</th>
+                        </tr>
+                    </thead>
+                    <tbody id="notableList"></tbody>
+                </table>
+                <p class="empty-state" id="notableEmpty" hidden>Critical/High 등급 이벤트가 없습니다.</p>
+            </div>
+        </section>
+
+        <section class="panel" style="margin-bottom:24px;">
+            <h3>대화 원문 PII 스캔 현황</h3>
+            <p style="color:#6b7785; font-size:13px; margin:0 0 16px;">이 두 저장소는 위험도(상/중/하)를 매기지 않습니다 — 마스킹이 빠진 개인정보가 남아있는지만 스캔합니다.</p>
+            <div class="pii-scan-row" id="piiScanRow"></div>
+        </section>
+
+        <section class="panel">
+            <h3>정적 점검 항목</h3>
+            <p style="color:#6b7785; font-size:13px; margin:0 0 16px;">로그 이벤트가 아니라 코드/DB 스키마 자체의 구조적 결함입니다.</p>
+            <div id="staticFindingsList"></div>
+            <p class="empty-state" id="staticFindingsEmpty" hidden>발견된 정적 결함이 없습니다.</p>
+        </section>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/admin-audit-dashboard.js"></script>
+</body>
+</html>

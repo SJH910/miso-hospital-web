@@ -14,6 +14,7 @@ from slowapi.errors import RateLimitExceeded
 
 from pii_masking import mask_pii
 from hospital_agent import run_agent
+from audit_summary import build_audit_summary
 
 app = FastAPI(title="Hospital Chatbot API")
 
@@ -144,6 +145,18 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         print(f"DB Logging error: {e}")
 
     return ChatResponse(answer=answer, masked_question=masked_question)
+
+# [체크리스트 7번 - 대시보드 1단계] WAS 관리자 화면이 감사로그를 보여주려면, WAS 자신의
+# MySQL(mysql_audit)은 직접 조회할 수 있지만 챗봇 쪽 3개 저장소(audit_jsonl/chatbot_sqlite/
+# mysql_chat)는 암호화 키(AUDIT_ENCRYPTION_KEY/secret.key)를 이 서비스만 갖고 있어 직접 못
+# 읽는다. 그래서 그 부분만 이 엔드포인트로 내려주고, WAS가 자기 DB 조회 결과와 합쳐서
+# 프론트에 응답한다 - /chat과 동일하게 내부 서비스 호출만 허용(브라우저 직접 접근 차단).
+@app.get("/audit-summary")
+@limiter.limit("10/minute")
+async def audit_summary_endpoint(request: Request):
+    verify_internal_caller(request)
+    return build_audit_summary()
+
 
 if __name__ == "__main__":
     import uvicorn
