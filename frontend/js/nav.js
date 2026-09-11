@@ -12,6 +12,7 @@ const NAV_ITEMS = [
     // (board.js의 loadUserInfo) 이 링크가 없어도 여전히 도달 가능.
     { href: 'admin-accounts.html', label: '계정 관리', roles: ['admin', 'staff'] },
     { href: 'admin-totp-setup.html', label: '로그인 보안', roles: ['admin'] },
+    { href: 'admin-audit-dashboard.html', label: '감사 로그', roles: ['admin'] },
     { href: 'reservation.html', label: '진료 예약', roles: ['patient'] },
     { href: 'records.html', label: '내 진료기록', roles: ['patient'] },
 ];
