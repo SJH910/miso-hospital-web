@@ -55,6 +55,19 @@ const attemptsByIp = new Map(); // ip -> [시도 타임스탬프, ...]
 const knownIpsByAdminUsername = new Map(); // admin username -> Set(과거에 성공 로그인했던 IP들)
 const knownRegionsByAdminUsername = new Map(); // admin username -> Set(과거에 성공 로그인했던 지역들)
 
+// [보안 수정 2026-09-14] 위 3개 Map은 전부 "계정 username"을 키로 쓰는데, DB 조회(로그인 판단)는
+// MySQL 기본 콜레이션이 대소문자를 구분 안 해서 "admin"/"Admin"/"ADMIN"이 전부 같은 계정으로
+// 인식된다(실측: ADMIN으로 로그인해도 admin 계정으로 정상 로그인됨). 근데 이 Map들은 JS Map이라
+// 대소문자를 그대로 구분해서 키로 쓰다 보니, 공격자가 매 시도마다 대소문자만 바꾸면(admin/Admin/ADMIN...)
+// 매번 "처음 보는 키"로 취급되어 반복실패 카운트가 절대 안 쌓이고, 신규 IP/지역 탐지도 "기록이 아예
+// 없으니 새로움 아님"으로 오판해서(isNewAdminLocation 참고) TOTP 추가인증까지 건너뛸 수 있었음 -
+// 감사 로그 미탐일 뿐 아니라 실제 인증 우회로 이어질 수 있는 문제. DB 콜레이션에 맞춰 소문자로
+// 정규화한 값을 Map 키로 통일해서 해결한다. 로그에 남기는 표시값(detail.username)은 실제로 무엇을
+// 입력했는지 알아야 트리아지에 도움되므로 원문 그대로 유지 - 정규화는 내부 카운팅 키에만 적용.
+function normalizeUsernameKey(username) {
+  return typeof username === "string" ? username.toLowerCase() : username;
+}
+
 function pruneOld(timestamps, windowMs) {
   const cutoff = Date.now() - windowMs;
   while (timestamps.length && timestamps[0] < cutoff) timestamps.shift();
@@ -127,11 +140,12 @@ async function detectAbnormalPattern({ username, ip, isFailure, isAdmin }) {
     });
   }
 
+  const usernameKey = normalizeUsernameKey(username);
   if (isFailure) {
-    const failures = failuresByUsername.get(username) || [];
+    const failures = failuresByUsername.get(usernameKey) || [];
     pruneOld(failures, FAILURE_WINDOW_MS);
     failures.push(Date.now());
-    failuresByUsername.set(username, failures);
+    failuresByUsername.set(usernameKey, failures);
 
     const threshold = isAdmin ? ADMIN_FAILURE_THRESHOLD : FAILURE_THRESHOLD;
     if (failures.length === threshold) {
@@ -140,7 +154,7 @@ async function detectAbnormalPattern({ username, ip, isFailure, isAdmin }) {
       });
     }
   } else {
-    failuresByUsername.delete(username); // 로그인 성공 시 실패 카운트 초기화
+    failuresByUsername.delete(usernameKey); // 로그인 성공 시 실패 카운트 초기화
   }
 }
 
@@ -148,11 +162,12 @@ async function detectAbnormalPattern({ username, ip, isFailure, isAdmin }) {
 // 관리자가 아직 한 번도 로그인한 적 없으면(맵에 기록 자체가 없으면) "새로움"으로 보지 않는다 -
 // 최초 로그인 때부터 인증을 요구하면 계정을 아예 못 쓰게 되므로.
 function isNewAdminLocation({ username, ip }) {
-  const knownIps = knownIpsByAdminUsername.get(username);
+  const usernameKey = normalizeUsernameKey(username);
+  const knownIps = knownIpsByAdminUsername.get(usernameKey);
   const isNewIp = knownIps ? !knownIps.has(ip) : false;
 
   const region = getRegionForIp(ip);
-  const knownRegions = knownRegionsByAdminUsername.get(username);
+  const knownRegions = knownRegionsByAdminUsername.get(usernameKey);
   const isNewRegion = region && knownRegions ? !knownRegions.has(region) : false;
 
   return isNewIp || isNewRegion;
@@ -162,24 +177,25 @@ function isNewAdminLocation({ username, ip }) {
 // (TOTP 인증까지 통과해서 로그인이 최종 완료된 경우에만 호출 - 여기서 새 위치로 등록해야
 //  다음번 같은 위치 로그인 때는 다시 인증을 요구하지 않는다.)
 async function recordAdminLocation({ username, ip, patientId }) {
-  const knownIps = knownIpsByAdminUsername.get(username);
+  const usernameKey = normalizeUsernameKey(username);
+  const knownIps = knownIpsByAdminUsername.get(usernameKey);
   if (knownIps && !knownIps.has(ip)) {
     await logAudit(patientId, "login_anomaly_admin_new_ip", "patients", patientId, {
       username, ip, knownIpCount: knownIps.size,
     });
   }
-  if (!knownIps) knownIpsByAdminUsername.set(username, new Set([ip]));
+  if (!knownIps) knownIpsByAdminUsername.set(usernameKey, new Set([ip]));
   else knownIps.add(ip);
 
   const region = getRegionForIp(ip);
   if (region) {
-    const knownRegions = knownRegionsByAdminUsername.get(username);
+    const knownRegions = knownRegionsByAdminUsername.get(usernameKey);
     if (knownRegions && !knownRegions.has(region)) {
       await logAudit(patientId, "login_anomaly_admin_new_location", "patients", patientId, {
         username, ip, region, knownRegionCount: knownRegions.size,
       });
     }
-    if (!knownRegions) knownRegionsByAdminUsername.set(username, new Set([region]));
+    if (!knownRegions) knownRegionsByAdminUsername.set(usernameKey, new Set([region]));
     else knownRegions.add(region);
   }
 }

@@ -21,6 +21,7 @@ const auditLogRoutes = require("./routes/auditLog");
 const chatRoutes = require("./routes/chat");
 const holidaysRoutes = require("./routes/holidays");
 const totpRoutes = require("./routes/totp");
+const { logAudit } = require("./audit");
 
 const app = express();
 
@@ -67,7 +68,24 @@ app.use("/api/totp", totpRoutes);
 
 // 안전망: 라우트에서 놓친 에러가 있어도 서버 프로세스 자체는 죽지 않고 500만 응답하게 함.
 // [보안 강화 #7-b 정보 노출] 에러 상세는 서버 로그에만 남기고 클라이언트에는 일반 메시지만 반환.
+//
+// [보안 강화 2026-09-14] express.json()의 기본 크기 제한(100KB)을 넘는 요청은 body-parser가
+// 라우트 핸들러(detectLongInput 등)에 도달하기도 전에 PayloadTooLargeError를 던진다 - 지금까지는
+// 이게 그냥 아래 기본 분기로 떨어져서 "500 + 감사 로그 없음"으로 끝났다. 즉 "문자열을 아주 길게
+// 주면 오히려 탐지가 안 되는" 미탐이었다 - login_anomaly_long_input(200자 초과 기준)이 잡으려던
+// 것과 같은 종류의 신호인데, 그보다 훨씬 큰 페이로드는 그 코드에 도달하지도 못해 놓치고 있었다.
+// body-parser 에러는 err.type === "entity.too.large"로 구분 가능하므로, 여기서 별도로 감사 로그를
+// 남기고 상태 코드도 부정확한 500 대신 413(Payload Too Large)으로 정확히 응답한다. 이 미들웨어는
+// 모든 라우트에 공통 적용되는 express.json() 다음에 걸리는 전역 에러 핸들러라 로그인뿐 아니라
+// 어느 POST/PATCH 엔드포인트든 같은 문제를 겪고 있었다 - 그래서 action 이름도 로그인 전용이
+// 아닌 범용(oversized_request_payload)으로 둔다.
 app.use((err, req, res, next) => {
+  if (err.type === "entity.too.large") {
+    logAudit(null, "oversized_request_payload", "request", null, {
+      ip: req.ip, path: req.path, length: err.length, limit: err.limit,
+    }).catch((e) => console.error("[audit log error]", e));
+    return res.status(413).json({ message: "요청이 너무 큽니다." });
+  }
   console.error(err);
   res.status(500).json({ message: "서버 오류가 발생했습니다." });
 });

@@ -15,16 +15,18 @@ const DEBOUNCE_MS = 5 * 60 * 1000; // 5분
 const recentSent = new Map(); // "action::actor" -> 마지막 발송 시각(ms)
 
 // [가독성 개선 2026-09-11] SECURITY_AUDIT_CRITERIA.md의 등급 매핑 표를 그대로 옮긴 한글
-// 라벨/사유/등급. was/risk-classification.js의 RISK_LEVELS에서 "high"인 5개 action이 전부다
-// (login_anomaly_admin_* 3종 + totp_verify_fail + totp_disabled) - 그 외 action이 여기로
-// 들어올 일은 현재 코드상 없지만, 앞으로 RISK_LEVELS에 새 "high" 이벤트가 추가될 경우
-// (경우의 수 대비) 코드 없이도 무슨 상황인지는 알 수 있도록 일반적인 기본값을 둔다.
+// 라벨/사유/등급. was/risk-classification.js의 RISK_LEVELS에서 "high"인 action이 전부다
+// (login_anomaly_admin_* 3종 + totp_verify_fail + totp_disabled + login_anomaly_sqli_pattern,
+// 2026-09-14 추가) - 그 외 action이 여기로 들어올 일은 현재 코드상 없지만, 앞으로 RISK_LEVELS에
+// 새 "high" 이벤트가 추가될 경우(경우의 수 대비) 코드 없이도 무슨 상황인지는 알 수 있도록
+// 일반적인 기본값(DEFAULT_LABEL)을 둔다.
 const EVENT_LABELS = {
   login_anomaly_admin_repeated_failure: ["관리자 계정 반복 실패", "고권한 계정이 집중 공격받는 중 (5분 내 3회)", "CRITICAL"],
   login_anomaly_admin_new_ip: ["관리자 신규 IP 로그인", "이미 로그인에 성공한 이벤트 - 계정 탈취 가능성", "CRITICAL"],
   login_anomaly_admin_new_location: ["관리자 신규 지역 로그인", "신규 IP 로그인과 동일 + 지리적으로도 이상", "CRITICAL"],
   totp_verify_fail: ["TOTP 인증 실패", "비밀번호 통과 후 2차인증 실패 - 탈취 정황", "HIGH"],
   totp_disabled: ["TOTP 해제", "2차인증 자체를 제거하는 조작", "HIGH"],
+  login_anomaly_sqli_pattern: ["SQL 인젝션 시도 탐지", "로그인 입력값에 SQLi 서명 발견 - 쿼리는 파라미터화되어 안전하나 침해 시도 정황", "HIGH"],
 };
 const DEFAULT_LABEL = ["미분류 위험 이벤트", "was/risk-classification.js에 새로 추가됐지만 아직 한글 라벨이 없는 high 등급 이벤트 - 코드 확인 필요", "HIGH"];
 const SEVERITY_EMOJI = { CRITICAL: "🔴", HIGH: "🟠" };
