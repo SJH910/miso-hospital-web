@@ -20,9 +20,11 @@ echo $! > .run/frontend.pid
 # 로그만 남기고 조용히 비활성 상태로 뜬다(서비스 자체는 안 죽음 - pii_masking.py 참고).
 # 이미 설치돼 있으면 아무것도 안 하고 넘어가도록 확인 후에만 다운로드(매 재시작마다 네트워크
 # 호출하지 않기 위함).
-if ! python3 -c "import ko_core_news_sm" 2>/dev/null; then
-  echo "spaCy 한국어 NER 모델(ko_core_news_sm) 설치 중..."
-  python3 -m spacy download ko_core_news_sm
+# [2026-09-14 갱신] sm(small)이 일반 단어를 이름으로 오탐하는 사례(미소병원/김치찌개/bot)가
+# 실측으로 확인돼 md(medium)로 교체 - pii_masking.py가 md를 우선 로드하고 없으면 sm으로 폴백함.
+if ! python3 -c "import ko_core_news_md" 2>/dev/null; then
+  echo "spaCy 한국어 NER 모델(ko_core_news_md) 설치 중..."
+  python3 -m spacy download ko_core_news_md
 fi
 
 # 챗봇 서비스는 tools_db.py(예약/진료기록 직접 조회)가 WAS와 동일한 MySQL에 접속해야 하므로

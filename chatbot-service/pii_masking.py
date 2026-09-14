@@ -10,17 +10,31 @@ logger = logging.getLogger(__name__)
 # "문맥상 이름(트리거 단어 없이 등장하는 이름)" 마스킹 2차 안전망이 꺼져 있다는 걸 아무도 알아챌
 # 수 없었음(BUG_REVIEW_2026-09-11 "fail-open" 항목). 서비스는 계속 죽지 않되, 최소한 시작 시
 # 눈에 띄는 경고를 남겨서 배포 시 모델 설치를 빠뜨렸는지 바로 알 수 있게 한다.
+#
+# [보안 수정 2026-09-14] ko_core_news_sm(small)은 트리거 없는 일반 명사구까지 PERSON/PS로
+# 오분류하는 경우가 많음(실측: "미소병원의"/"김치찌개"/"bot" 전부 오탐, "홍길동 취소해줘"는
+# 반대로 LC로 잘못 분류돼 이름을 놓침). ko_core_news_md(medium)로 같은 케이스를 재현하니
+# 위 오탐 4건이 전부 사라지고 실제 이름 탐지(박영희 등)·지명 필터링(강남역/서울)은 그대로
+# 유지됨, 속도 차이도 무시할 수준(sm 2.85ms vs md 3.07ms, 실측). md가 없는 환경(다운로드
+# 실패 등)을 위해 sm으로 자동 폴백한다.
 try:
     import spacy
     try:
-        nlp = spacy.load("ko_core_news_sm")
+        nlp = spacy.load("ko_core_news_md")
     except OSError:
-        nlp = None  # spacy는 있지만 한국어 모델이 없는 경우
-        logger.warning(
-            "⚠️ spaCy 한국어 모델(ko_core_news_sm)을 찾을 수 없습니다. "
-            "'python -m spacy download ko_core_news_sm'으로 설치 전까지, "
-            "트리거 단어 없이 등장하는 이름(예: 상대가 이름만 말한 경우) PII 마스킹이 비활성 상태입니다."
-        )
+        try:
+            nlp = spacy.load("ko_core_news_sm")
+            logger.warning(
+                "⚠️ spaCy 한국어 모델 ko_core_news_md를 찾을 수 없어 ko_core_news_sm으로 폴백합니다. "
+                "'python -m spacy download ko_core_news_md'로 설치하면 이름 탐지 정밀도가 개선됩니다."
+            )
+        except OSError:
+            nlp = None  # spacy는 있지만 한국어 모델이 하나도 없는 경우
+            logger.warning(
+                "⚠️ spaCy 한국어 모델(ko_core_news_md/sm)을 찾을 수 없습니다. "
+                "'python -m spacy download ko_core_news_md'으로 설치 전까지, "
+                "트리거 단어 없이 등장하는 이름(예: 상대가 이름만 말한 경우) PII 마스킹이 비활성 상태입니다."
+            )
 except ImportError:
     nlp = None  # spacy 자체가 설치 안 된 경우
     logger.warning(
