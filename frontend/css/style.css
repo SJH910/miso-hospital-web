@@ -10,34 +10,17 @@ body {
     height: 100vh;
 }
 
-.login-container, .board-container {
+/* [2026-09-11] 예전엔 .board-container와 이 규칙을 공유했는데, admin.html/admin-holidays.html/
+   admin-totp-setup.html이 전부 다른 페이지들과 같은 .page-header/.page-body 구조로 통일되면서
+   .board-container를 쓰는 HTML이 하나도 안 남음 - 그쪽 관련 규칙(600px/900px 폭, 중앙 정렬)은
+   삭제. signup.html이 여전히 이 클래스를 쓰므로 .login-container 자체는 유지. */
+.login-container {
     background-color: #ffffff;
     padding: 40px;
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     width: 100%;
     max-width: 400px;
-}
-
-.board-container {
-    max-width: 600px;
-    align-self: flex-start;
-    margin-top: 50px;
-}
-
-/* [2026-09-10] admin.html 문서 등록 폼 전용 - 텍스트/원본 이미지 2단 그리드가 실제로 좌우로
-   나뉘려면 .board-container 기본폭(600px)으로는 부족해서(패딩 빼면 ~520px, 두 칼럼 합이
-   더 넓음) 이 페이지만 다른 wide 레이아웃(.page-body)과 같은 900px로 넓힘. 로그인/휴진일
-   관리처럼 그대로 좁아야 하는 다른 .board-container 페이지에는 영향 없음. */
-.board-container--wide {
-    max-width: 900px;
-}
-
-/* admin.html/admin-holidays.html/admin-totp-setup.html - 다른 화면들처럼 site-header(홈 링크·nav·
-   로그아웃)를 쓰기 위해 body.landing-page(block 레이아웃)를 같이 쓴다. body가 더 이상 flex로
-   중앙 정렬해주지 않으므로, 여기서 직접 수평 중앙 정렬 + 여백을 잡아준다. */
-body.landing-page .board-container {
-    margin: 40px auto 60px;
 }
 
 h2, h3 {
@@ -132,12 +115,38 @@ li a {
     white-space: pre-wrap;
     max-height: 200px;
     overflow-y: auto;
+    margin-bottom: 18px;
+}
+
+/* [2026-09-11] "인식 결과 미리보기"/"원문 텍스트 수정" 전환 - 버튼처럼 안 보이게 배경/테두리
+   없이 텍스트+밑줄만 쓰고, 선택된 탭만 밑줄이 진하게 보이도록(.is-selected 행 강조와 같은 원리). */
+.ocr-tabs {
+    display: flex;
+    gap: 20px;
+    border-bottom: 1px solid #eef0f2;
+    margin-bottom: 14px;
+}
+
+.ocr-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0 2px 10px;
+    font-size: 14px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.ocr-tab.is-active {
+    color: var(--navy);
+    font-weight: bold;
+    border-bottom-color: var(--navy);
 }
 
 /* ==========================================================
    index.html 전용 랜딩 페이지 스타일
-   (다른 페이지의 .login-container / .board-container 등에는
-   영향을 주지 않도록 body.landing-page 하위로만 범위를 한정함)
+   (다른 페이지의 .login-container 등에는 영향을 주지 않도록
+   body.landing-page 하위로만 범위를 한정함)
    ========================================================== */
 :root {
     --navy: #1c3a5e;
@@ -599,10 +608,21 @@ body.landing-page {
     margin: 0 0 18px;
 }
 
+/* [2026-09-11] 병원 공지 게시판 스타일 참고해서 재구성 - 왼쪽(카테고리+검색)/오른쪽(글쓰기)로 분리 */
 .board-toolbar {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 10px;
     margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.board-toolbar__filters {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-width: 240px;
 }
 
 .board-toolbar input[type="text"] {
@@ -612,22 +632,116 @@ body.landing-page {
     border-radius: 6px;
 }
 
+.btn-write {
+    flex: none;
+    width: auto;
+    padding: 10px 22px;
+    background: var(--navy);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-write:hover {
+    background: var(--navy-dark);
+}
+
 .board-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 14px;
 }
 
-/* [2026-09-10] admin.html - "문서 스캔" 폼과 "저장된 문서" 목록/상세를 시각적으로 분리 */
-.admin-doc-section,
-.admin-doc-detail {
-    margin-top: 32px;
-    padding-top: 24px;
-    border-top: 1px solid #eef0f2;
+/* [2026-09-11] 클릭하면 아래 상세 패널이 채워지는 표의 행들 - admin.html "저장된 문서",
+   admin-board.html "전체 문의 목록". 클릭 가능하다는 걸 커서로 표시하고, 방금 선택한 행은
+   .is-selected로 강조(records.js 등 다른 표는 상세를 같은 자리에 바로 보여주는 게 아니라
+   새 페이지/영역으로 이동하는 구조라 "선택 상태 유지"가 의미 없어 대상에서 제외). */
+#documentList tr,
+#inquiryList tr {
+    cursor: pointer;
 }
 
-.admin-doc-section tbody tr {
-    cursor: pointer;
+#documentList tr.is-selected,
+#inquiryList tr.is-selected {
+    background: var(--mint);
+}
+
+#documentList tr.is-selected:hover,
+#inquiryList tr.is-selected:hover {
+    background: var(--mint);
+}
+
+/* [2026-09-11] admin.html "문서 스캔" 화면 카드 레이아웃 - 왼쪽(업로드+미리보기)/오른쪽(OCR 결과) 2단 */
+.ocr-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.4fr);
+    gap: 20px;
+    align-items: start;
+}
+
+/* [2026-09-11 수정] .panel + .panel(위쪽 692행)이 클래스 2개짜리라 .ocr-card 단독 선택자보다
+   명시도가 높아서, 같은 줄에 나란히 두 .panel이 있어도(그리드라 실제로는 "다음 줄"이 아닌데)
+   오른쪽 카드에 margin-top:24px이 그대로 적용돼 두 카드가 어긋나 보이던 원인이었음
+   (.ocr-card { margin:0 }으로는 못 이김). .ocr-layout 안으로 한정해 확실히 0으로 되돌림. */
+.ocr-layout > .panel,
+.ocr-layout > .panel + .panel {
+    margin: 0;
+}
+
+.ocr-card h4 {
+    margin: 0 0 14px;
+    color: var(--navy);
+    font-size: 15px;
+}
+
+.ocr-info-list {
+    margin: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    row-gap: 8px;
+    column-gap: 14px;
+    font-size: 13px;
+}
+
+.ocr-info-list dt {
+    color: var(--text-muted);
+}
+
+.ocr-info-list dd {
+    margin: 0;
+    color: #333;
+    text-align: right;
+    word-break: break-all;
+}
+
+/* [2026-09-11] "항목/금액" 표(parseItemTable, best-effort 인식됐을 때만 표시) */
+.ocr-item-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 14px;
+}
+
+.ocr-item-table th,
+.ocr-item-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eef0f2;
+    text-align: left;
+}
+
+.ocr-item-table td:last-child,
+.ocr-item-table th:last-child {
+    text-align: right;
+}
+
+@media (max-width: 700px) {
+    .ocr-layout {
+        grid-template-columns: 1fr;
+    }
 }
 
 .board-table th {
@@ -736,6 +850,43 @@ body.landing-page {
 
 .board-table a:hover {
     color: var(--accent);
+}
+
+/* [2026-09-11] 게시판 표 아래 페이지 번호 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    margin-top: 20px;
+}
+
+.pagination button {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 6px;
+    border: none;
+    background: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    color: #555;
+}
+
+.pagination button:hover:not(:disabled):not(.pagination__page--active) {
+    background: var(--mint);
+}
+
+.pagination button.pagination__page--active {
+    background: var(--accent);
+    color: #fff;
+    font-weight: bold;
+    cursor: default;
+}
+
+.pagination button:disabled {
+    color: #ccc;
+    cursor: default;
 }
 
 .board-table .col-num,

@@ -4,6 +4,7 @@ const rateLimit = require("express-rate-limit");
 const { createWorker } = require("tesseract.js");
 const requirePermission = require("../middleware/requirePermission");
 const { verifyCsrfToken } = require("../middleware/csrf");
+const { parseItemTable, parseDisplayFields } = require("../document-parsing");
 
 const router = express.Router();
 
@@ -59,6 +60,57 @@ function getWorkerPool() {
 
 const MAX_TEXT_LENGTH = 8000;
 
+// [2026-09-11 시도] Tesseract가 내려주는 일반 텍스트(data.text)는 이미 한 줄로 평탄화돼 있어서
+// "항목 / 금액 / 본인부담금 / 비급여"처럼 여러 열로 인쇄된 표의 열 구분이 사라진다. 대신
+// data.blocks(옵션으로 요청해야 나옴)에 들어있는 단어별 좌표(bbox)를 이용해, 같은 줄 안에서
+// 단어 사이 간격이 유난히 큰 지점을 "다음 열로 넘어감"으로 보고 탭 문자로 구분해 재조립한다.
+// 어디까지나 휴리스틱이라 완벽하지 않음 - 열이 잘못 나뉘거나(간격이 애매한 경우), 표가 아닌
+// 문장인데 우연히 큰 간격이 있으면 탭이 잘못 들어갈 수 있음. 실패해도 최악의 경우 기존과
+// 똑같은(탭 없는) 한 줄짜리 텍스트로 남을 뿐이라 저장 자체에는 위험이 없다고 판단해 시도한다.
+function groupWordsIntoColumns(words, lineHeight) {
+  if (!words || words.length === 0) return [];
+  const sorted = [...words].sort((a, b) => a.bbox.x0 - b.bbox.x0);
+  // 단어 폭 평균으로 임계값을 잡으면 유난히 긴 단어(예: "Consultation") 하나가 그 줄 전체
+  // 임계값을 실제 열 간격보다 훨씬 크게 끌어올려서, 진짜 열 경계를 놓치는 문제가 실측에서
+  // 확인됨. 대신 줄 높이(=글자 크기와 비례, 문서 내용 길이에 안 흔들림)를 기준으로 삼는다 -
+  // 표 열 간격은 보통 줄 높이의 2배 이상, 일반 단어 사이 공백은 그보다 훨씬 좁다.
+  const gapThreshold = Math.max(30, (lineHeight || 20) * 2);
+
+  const columns = [[sorted[0].text]];
+  let lastX1 = sorted[0].bbox.x1;
+  for (let i = 1; i < sorted.length; i++) {
+    const word = sorted[i];
+    if (word.bbox.x0 - lastX1 > gapThreshold) {
+      columns.push([word.text]);
+    } else {
+      columns[columns.length - 1].push(word.text);
+    }
+    lastX1 = word.bbox.x1;
+  }
+  return columns.map((col) => col.join(" "));
+}
+
+function buildTabularText(data, fallbackText) {
+  try {
+    const lines = [];
+    for (const block of data.blocks || []) {
+      for (const para of block.paragraphs || []) {
+        for (const line of para.lines || []) {
+          const lineHeight = line.bbox ? line.bbox.y1 - line.bbox.y0 : null;
+          const columns = groupWordsIntoColumns(line.words, lineHeight);
+          // 열이 2개 이상으로 나뉜 줄만 탭으로 합침 - 1개면(=보통 문장) 원래 줄 텍스트 그대로 사용.
+          lines.push(columns.length >= 2 ? columns.join("\t") : (line.text || "").trim());
+        }
+      }
+    }
+    const joined = lines.join("\n").trim();
+    return joined || fallbackText;
+  } catch {
+    // blocks 구조가 예상과 다르거나 비어있으면 기존 방식(순수 텍스트)으로 안전하게 폴백.
+    return fallbackText;
+  }
+}
+
 // [보안 강화 #5 CSRF] 이 프로젝트의 다른 상태 변경 POST 라우트(routes/board.js)와 동일하게
 // CSRF 토큰 검증을 첫 게이트로 적용. 권한 확인(RBAC)은 requirePermission이 이어서 담당.
 router.post("/", verifyCsrfToken, requirePermission("ocr:scan"), ocrLimiter, (req, res) => {
@@ -77,13 +129,25 @@ router.post("/", verifyCsrfToken, requirePermission("ocr:scan"), ocrLimiter, (re
     }
 
     try {
+      const startedAt = Date.now();
       const workers = await getWorkerPool();
       const worker = workers[nextWorkerIndex % workers.length];
       nextWorkerIndex += 1;
 
-      const { data } = await worker.recognize(req.file.buffer);
-      const text = (data.text || "").trim().slice(0, MAX_TEXT_LENGTH);
-      res.json({ text });
+      const { data } = await worker.recognize(req.file.buffer, {}, { text: true, blocks: true });
+      const flatText = (data.text || "").trim();
+      const text = buildTabularText(data, flatText).slice(0, MAX_TEXT_LENGTH);
+      // [2026-09-11] 관리자 화면에 "처리 시간"을 보여주기 위한 실측값 - 꾸밈이 아니라
+      // 실제로 이 요청이 Tesseract 인식에 걸린 시간(ms)을 그대로 반환한다.
+      // [2026-09-11] 스캔 직후 화면에도 저장된 문서 상세보기와 동일한 구조화 미리보기(라벨:값,
+      // 항목표)를 보여주기 위해 documents.js와 같은 파서를 공유해서 계산 - was/document-parsing.js 참고.
+      res.json({
+        text,
+        processingMs: Date.now() - startedAt,
+        fileSize: req.file.buffer.length,
+        parsed_items: parseItemTable(text),
+        parsed_display_fields: parseDisplayFields(text),
+      });
     } catch (e) {
       // [보안 강화 #7-b 정보 노출] 상세 에러는 서버 로그에만 남기고 응답에는 일반 메시지만 반환
       console.error("[ocr error]", e);

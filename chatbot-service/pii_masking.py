@@ -161,9 +161,15 @@ def mask_pii(text: str) -> str:
     # 2. 전화번호 (Phone Number)
     # 010 (3) + 4 + 4
     # '0', '1', '[016789]'
+    # [보안 수정 2026-09-11] 중간 구간을 4자리로만 고정해뒀더니, 011/016/017/018/019
+    # 구형 국번은 중간 구간이 3자리(예: 011-234-5678)라 매칭 자체가 안 되고 그대로
+    # 통과되던 버그가 있었음(BUG_REVIEW_2026-09-10.md 참고). 4자리를 먼저 시도하고
+    # 안 되면 3자리로 시도하도록 변경 - 4자리를 먼저 둬야 진짜 4자리 번호가 3자리로
+    # 잘못 잘려서 뒤 패턴과 안 맞는 상황을 피할 수 있음.
     phone_part1 = r'0' + SEPARATOR + r'*1' + SEPARATOR + r'*[016789]'
-    phone_part2 = r'[\s\-\~_]*'.join([r'\d'] * 3) + r'[\s\-\~_]*\d?' # 3 or 4 digits. Let's just use 4 digits for simplicity, or \d 4 times.
-    phone_part2 = (SEPARATOR + '*').join([r'\d'] * 4)
+    phone_part2_new = (SEPARATOR + '*').join([r'\d'] * 4)  # 010 등 신형 - 4자리
+    phone_part2_old = (SEPARATOR + '*').join([r'\d'] * 3)  # 011~019 구형 - 3자리
+    phone_part2 = f'(?:{phone_part2_new}|{phone_part2_old})'
     phone_part3 = (SEPARATOR + '*').join([r'\d'] * 4)
     phone_pattern = re.compile(f'({phone_part1}){SEPARATOR}*({phone_part2}){SEPARATOR}*({phone_part3})')
     masked_text = phone_pattern.sub(r'\1-****-\3', masked_text)

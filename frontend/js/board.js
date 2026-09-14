@@ -42,10 +42,50 @@ function renderPost(post, index) {
     inquiryList.appendChild(tr);
 }
 
-function renderList(posts) {
+// [2026-09-11] 표 아래 페이지 번호 추가. 서버는 전체 목록을 한 번에 내려주므로(양이 많지
+// 않은 문의 게시판이라 서버 페이징까지는 불필요), 클라이언트에서 잘라서 보여주기만 한다.
+const PAGE_SIZE = 10;
+let currentPage = 1;
+
+function renderList(posts, resetPage = true) {
+    if (resetPage) currentPage = 1;
+    const totalPages = Math.max(1, Math.ceil(posts.length / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    const start = (currentPage - 1) * PAGE_SIZE;
+
     inquiryList.innerHTML = '';
     emptyState.hidden = posts.length > 0;
-    posts.forEach(renderPost);
+    posts.slice(start, start + PAGE_SIZE).forEach((post, i) => renderPost(post, start + i));
+    renderPagination(posts, totalPages);
+}
+
+function renderPagination(posts, totalPages) {
+    const container = document.getElementById('pagination');
+    container.innerHTML = '';
+
+    function makeButton(label, targetPage, { active = false, disabled = false } = {}) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = label;
+        if (active) btn.className = 'pagination__page--active';
+        if (disabled) {
+            btn.disabled = true;
+        } else {
+            btn.addEventListener('click', () => {
+                currentPage = targetPage;
+                renderList(posts, false);
+            });
+        }
+        return btn;
+    }
+
+    container.appendChild(makeButton('«', 1, { disabled: currentPage === 1 }));
+    container.appendChild(makeButton('‹', currentPage - 1, { disabled: currentPage === 1 }));
+    for (let page = 1; page <= totalPages; page++) {
+        container.appendChild(makeButton(String(page), page, { active: page === currentPage }));
+    }
+    container.appendChild(makeButton('›', currentPage + 1, { disabled: currentPage === totalPages }));
+    container.appendChild(makeButton('»', totalPages, { disabled: currentPage === totalPages }));
 }
 
 async function loadUserInfo() {
@@ -56,7 +96,7 @@ async function loadUserInfo() {
     }
     const me = await res.json();
     setCsrfToken(me.csrfToken); // 새로고침 등으로 토큰이 없을 경우를 대비해 /api/me에서도 재확보
-    document.getElementById('userInfo').textContent = `${me.name}님`;
+    document.getElementById('userInfo').textContent = `${me.name} 님`;
 
     // staff는 board:write/board:read 권한이 없어 이 페이지의 작성 폼·상세보기(view.html)를 쓸 수 없다.
     // 전체 문의 조회·답변은 admin-board.html 전용 화면에서 처리하므로 그쪽으로 보낸다.
@@ -70,6 +110,11 @@ async function loadUserInfo() {
     renderNavLinks(me.role);
     if (me.role === 'patient') {
         document.getElementById('chatWidget').style.display = 'block';
+    }
+    // [2026-09-11] "문의 답변" 링크를 상단 네비에서 빼고 여기로 옮김 - staff는 이미 위에서
+    // admin-board.html로 리다이렉트돼서 이 지점에 도달 안 하므로, 사실상 admin에게만 보임.
+    if (me.role === 'admin' || me.role === 'staff') {
+        document.getElementById('goToAdminBoardBtn').hidden = false;
     }
 }
 
@@ -108,6 +153,21 @@ document.getElementById('inquiryForm').addEventListener('submit', async function
 
     document.getElementById('title').value = '';
     document.getElementById('content').value = '';
+    document.getElementById('writeSection').hidden = true; // 등록 완료했으니 다시 닫아둠
+});
+
+document.getElementById('goToAdminBoardBtn').addEventListener('click', () => {
+    window.location.href = 'admin-board.html';
+});
+
+// [2026-09-11] "증상 남기기" 폼은 기본적으로 숨겨두고, 이 버튼을 눌러야만 나타나게 함(토글).
+document.getElementById('scrollToWriteBtn').addEventListener('click', function () {
+    const writeSection = document.getElementById('writeSection');
+    writeSection.hidden = !writeSection.hidden;
+    if (!writeSection.hidden) {
+        writeSection.scrollIntoView({ behavior: 'smooth' });
+        document.getElementById('title').focus();
+    }
 });
 
 searchInput.addEventListener('input', () => {

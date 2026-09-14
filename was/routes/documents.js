@@ -7,6 +7,7 @@ const pool = require("../db");
 const requirePermission = require("../middleware/requirePermission");
 const { verifyCsrfToken } = require("../middleware/csrf");
 const { encryptBuffer, decryptBuffer } = require("../crypto-utils");
+const { parseDate, parseAmount, parseLabeledFields, parseItemTable, parseDisplayFields } = require("../document-parsing");
 
 const router = express.Router();
 
@@ -48,59 +49,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
 });
-
-// 이 라벨이 포함된 줄은 parsed_fields에 절대 담지 않는다 (민감정보가 새 컬럼에 한 번 더 복제되는 것을 막기 위함).
-// extracted_text(원문)에는 여전히 남아있지만, 그건 기존과 동일하게 API 응답에 포함되지 않는다.
-const SENSITIVE_LABEL_KEYWORDS = ["주민등록번호", "연락처", "전화번호", "휴대폰", "카드번호", "계좌번호"];
-const MAX_PARSED_FIELDS = 30;
-
-// OCR 원문에서 날짜/금액을 정규식으로 뽑아내는 best-effort 파서.
-// OCR 인식 오류가 그대로 오파싱으로 이어질 수 있으므로 참고용 데이터로만 취급해야 한다.
-function parseDate(text) {
-  const isoMatch = text.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
-  if (isoMatch) {
-    const [, y, m, d] = isoMatch;
-    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  }
-  const koreanMatch = text.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-  if (koreanMatch) {
-    const [, y, m, d] = koreanMatch;
-    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  }
-  return null;
-}
-
-function parseAmount(text) {
-  const match = text.match(/([\d,]{1,12})\s*원/);
-  if (!match) return null;
-  const amount = parseInt(match[1].replace(/,/g, ""), 10);
-  return Number.isFinite(amount) ? amount : null;
-}
-
-// OCR 원문을 줄 단위로 훑어서 "라벨 : 값" 형태의 줄만 키-값으로 뽑아내는 best-effort 파서.
-// 콜론이 없는 줄(안내문구, 깨진 OCR 잡음 등)은 애초에 매칭이 안 되어 자연스럽게 제외된다.
-function parseLabeledFields(text, knownFields) {
-  const fields = { ...knownFields };
-  const lines = text.split("\n");
-
-  for (const line of lines) {
-    if (Object.keys(fields).length >= MAX_PARSED_FIELDS) break;
-
-    const match = line.match(/^\s*(.{1,20}?)\s*[:：]\s*(.+?)\s*$/);
-    if (!match) continue;
-
-    const [, rawLabel, value] = match;
-    const label = rawLabel.trim();
-    if (!label || !value) continue;
-    // 이미 확정된 값(문서종류/환자명)은 OCR 원문에 같은 라벨의 줄이 있어도 덮어쓰지 않는다 -> 신뢰할 수 있는 값이 우선
-    if (Object.prototype.hasOwnProperty.call(knownFields, label)) continue;
-    if (SENSITIVE_LABEL_KEYWORDS.some((keyword) => label.includes(keyword))) continue;
-
-    fields[label] = value;
-  }
-
-  return fields;
-}
 
 // 관리자가 OCR 결과를 확인/수정한 뒤 저장 버튼을 눌렀을 때 호출됨.
 // /api/ocr은 추출 전용으로 남겨두고 저장은 이 엔드포인트로 분리했다 —
@@ -189,7 +137,14 @@ router.get("/", requirePermission("documents:view"), async (req, res) => {
        JOIN patients p ON p.id = sd.patient_id
        ORDER BY sd.created_at DESC`
     );
-    res.json(rows.map((r) => ({ ...r, hasImage: Boolean(r.hasImage) })));
+    res.json(
+      rows.map((r) => ({
+        ...r,
+        hasImage: Boolean(r.hasImage),
+        parsed_items: parseItemTable(r.extracted_text || ""),
+        parsed_display_fields: parseDisplayFields(r.extracted_text || ""),
+      }))
+    );
   } catch (err) {
     console.error("[documents list error]", err);
     res.status(500).json({ message: "서버 오류가 발생했습니다." });
@@ -232,7 +187,14 @@ router.patch("/:id", verifyCsrfToken, requirePermission("documents:create"), asy
       `UPDATE scanned_documents SET extracted_text = ?, parsed_date = ?, parsed_amount = ?, parsed_fields = ? WHERE id = ?`,
       [finalText, parsedDate, parsedAmount, JSON.stringify(parsedFields), req.params.id]
     );
-    res.json({ id: Number(req.params.id), extracted_text: finalText, parsed_date: parsedDate, parsed_amount: parsedAmount });
+    res.json({
+      id: Number(req.params.id),
+      extracted_text: finalText,
+      parsed_date: parsedDate,
+      parsed_amount: parsedAmount,
+      parsed_items: parseItemTable(finalText),
+      parsed_display_fields: parseDisplayFields(finalText),
+    });
   } catch (err) {
     console.error("[documents edit error]", err);
     res.status(500).json({ message: "서버 오류가 발생했습니다." });

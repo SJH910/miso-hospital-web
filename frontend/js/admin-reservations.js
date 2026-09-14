@@ -19,7 +19,7 @@ async function loadUserInfo() {
         return;
     }
 
-    document.getElementById('userInfo').textContent = `접속자: ${me.name} 님`;
+    document.getElementById('userInfo').textContent = `${me.name} 님`;
     renderNavLinks(me.role);
 }
 

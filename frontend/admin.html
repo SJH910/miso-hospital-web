@@ -19,22 +19,45 @@
         </nav>
     </header>
 
-    <div class="board-container board-container--wide">
-        <h2>문서 스캔 (OCR)</h2>
+    <div class="page-header">
+        <p class="breadcrumb"><a href="index.html">홈</a> &gt; 문서 스캔 (OCR)</p>
+        <h1>문서 스캔 (OCR)</h1>
+    </div>
 
-        <section class="write-section">
+    <div class="page-body">
+        <section class="panel write-section">
             <h3>진단서 / 처방전 / 영수증 이미지 업로드</h3>
-            <!-- [2026-09-10] 추출된 텍스트(왼쪽, 작게) / 업로드한 원본 이미지 미리보기(오른쪽)로 2단 배치 -->
-            <div class="record-detail__grid">
-                <div class="record-detail__text-col">
+            <!-- [2026-09-11] 단순 2단으로 되돌림 - 왼쪽(업로드 + 바로 아래 미리보기), 오른쪽(OCR 결과).
+                 파일 정보/처리 상태 카드는 불필요하다고 판단돼 제거. -->
+            <div class="ocr-layout">
+                <div class="panel ocr-card">
+                    <h4>문서 이미지 업로드</h4>
                     <div class="input-group">
-                        <label>인식 결과 미리보기 (OCR이 잘못 읽었을 수 있으니 아래 텍스트와 대조해보세요)</label>
-                        <div id="confidencePreview" class="ocr-preview">이미지를 추출하면 여기에 표시됩니다.</div>
+                        <label for="scanImage">이미지 파일 (JPEG/PNG/WEBP, 5MB 이하)</label>
+                        <input type="file" id="scanImage" accept="image/png,image/jpeg,image/webp">
                     </div>
-                    <div class="input-group">
-                        <label for="resultText">추출된 텍스트 (저장 전 확인/수정 가능)</label>
+                    <button type="button" id="scanButton" class="btn-primary">텍스트 추출</button>
+                    <p id="scanStatus"></p>
+                    <img id="scanImagePreview" class="record-detail__image" alt="선택한 원본 이미지 미리보기" style="margin-top:16px;" hidden>
+                </div>
+
+                <div class="panel ocr-card">
+                    <h4>OCR 추출 결과</h4>
+                    <!-- [2026-09-11] "인식 결과 미리보기"/"원문 텍스트 수정"을 버튼이 아니라 탭으로 -
+                         선택된 쪽만 밑줄로 표시되고 그 탭의 내용만 보임(admin.js가 .is-active 토글). -->
+                    <div class="ocr-tabs" role="tablist">
+                        <button type="button" class="ocr-tab is-active" id="previewTabBtn" role="tab" aria-selected="true">인식 결과 미리보기</button>
+                        <button type="button" class="ocr-tab" id="editTabBtn" role="tab" aria-selected="false">원문 텍스트 수정</button>
+                    </div>
+                    <div id="confidencePreview" class="ocr-preview">이미지를 추출하면 여기에 표시됩니다.</div>
+                    <div class="input-group" id="resultTextGroup" hidden>
                         <textarea id="resultText" rows="8" placeholder="추출 결과가 여기에 표시됩니다."></textarea>
                     </div>
+                    <!-- [2026-09-11] 저장된 문서 상세보기와 동일하게, 스캔 직후에도 라벨:값/항목표
+                         구조화 미리보기를 보여줌 (민감정보는 서버가 마스킹해서 내려줌 - 원문은 위
+                         "원문 텍스트 수정" 탭에서 확인). 인식 못 하면 두 컨테이너 다 비워둠(admin.js). -->
+                    <div id="scanDisplayFields"></div>
+                    <div id="scanItemTable"></div>
                     <div class="input-group">
                         <label for="patientSelect">연결할 환자</label>
                         <select id="patientSelect">
@@ -53,21 +76,12 @@
                     <button type="button" id="saveButton" class="btn-primary">저장</button>
                     <p id="saveStatus"></p>
                 </div>
-                <div class="record-detail__image-col">
-                    <div class="input-group">
-                        <label for="scanImage">이미지 파일 (JPEG/PNG/WEBP, 5MB 이하)</label>
-                        <input type="file" id="scanImage" accept="image/png,image/jpeg,image/webp">
-                    </div>
-                    <button type="button" id="scanButton" class="btn-primary">텍스트 추출</button>
-                    <p id="scanStatus"></p>
-                    <img id="scanImagePreview" class="record-detail__image" alt="선택한 원본 이미지 미리보기" hidden>
-                </div>
             </div>
         </section>
 
         <!-- [2026-09-10] "저장된 문서"를 목록/상세로 분리 - 환자용 records.html과 같은 패턴
              (표에서 행 클릭 -> 아래 상세 패널에 원문/이미지, 여기서는 수정도 가능). -->
-        <section class="list-section admin-doc-section">
+        <section class="panel list-section">
             <h3>저장된 문서</h3>
             <table class="board-table">
                 <thead>
@@ -78,7 +92,7 @@
             <p id="documentEmptyState" hidden>저장된 문서가 없습니다.</p>
         </section>
 
-        <section class="record-detail admin-doc-detail" id="documentDetail" hidden></section>
+        <section class="panel record-detail" id="documentDetail" hidden></section>
     </div>
 
     <script src="js/was-config.js"></script>

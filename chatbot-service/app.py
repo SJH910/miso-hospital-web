@@ -105,7 +105,12 @@ class ChatResponse(BaseModel):
 
 @app.post("/chat", response_model=ChatResponse)
 @limiter.limit("20/minute")
-async def chat_endpoint(req: ChatRequest, request: Request):
+# [성능 수정 2026-09-11] 이 함수는 async def였지만 내부에 await가 단 하나도 없이 전부
+# 동기 코드(pymysql, Gemini 호출, sqlite3)를 그대로 실행하고 있었음 - "async인 척하는 sync
+# 함수"라 이벤트 루프를 그대로 막고 있던 것(BUG_REVIEW_2026-09-10.md 참고). FastAPI는 sync
+# def 라우트를 자동으로 별도 스레드풀에서 돌려주므로, async를 떼는 것만으로 내부 코드를
+# 하나도 안 고치고 이벤트 루프 블로킹을 없앨 수 있다.
+def chat_endpoint(req: ChatRequest, request: Request):
     verify_internal_caller(request)
 
     original_question = req.question
