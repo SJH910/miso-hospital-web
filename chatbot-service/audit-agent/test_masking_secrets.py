@@ -70,6 +70,26 @@ class TestAuditMaskingRegression(unittest.TestCase):
         self.assertIn("****", str(masked))
         self.assertNotIn("011-234-5678", str(masked))
 
+    # [2026-09-14 회귀 테스트] "저는/제 이름은 + N글자"면 무조건 이름으로 취급해 마스킹하던
+    # 오탐 버그(LogDB_plan.md 2026-09-10/09-14 기록 - "실시간", 챗봇 거절 메시지의 "미소병원"이
+    # 실제로 오탐 마스킹된 사례) - 성씨 화이트리스트 도입 후 일반 단어는 더 이상 마스킹 안 됨.
+    def test_common_word_after_trigger_is_not_masked_as_name(self):
+        payload = {"input": {"args": ["저는 아파요. 배가 너무 쓰리고 열도 나요."]}}
+        masked = self.masker.mask_payload(payload)
+        self.assertIn("저는 아파요", str(masked))
+
+    def test_chatbot_rejection_message_is_not_masked_as_name(self):
+        # 실제로 운영 중 오탐이 재현됐던 문구 그대로 (LogDB_plan.md 2026-09-14 기록).
+        payload = {"input": {"args": ["저는 미소병원 안내 챗봇입니다. 병원 이용과 관련된 질문만 도와드릴 수 있습니다."]}}
+        masked = self.masker.mask_payload(payload)
+        self.assertIn("미소병원", str(masked))
+
+    def test_real_name_after_trigger_is_still_masked(self):
+        payload = {"input": {"args": ["저는 홍길동입니다."]}}
+        masked = self.masker.mask_payload(payload)
+        self.assertNotIn("홍길동", str(masked))
+        self.assertIn("홍*동", str(masked))
+
     def test_existing_email_masking_still_works(self):
         payload = {"input": {"args": ["test@example.com"]}}
         masked = self.masker.mask_payload(payload)
