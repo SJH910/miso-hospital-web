@@ -73,6 +73,44 @@ async function detectLongInput({ username, password, ip }) {
   }
 }
 
+// [보안 강화 2026-09-14] 쿼리가 파라미터화되어 있어 SQL 인젝션 자체는 실행되지 않지만,
+// 지금까지는 그 "시도"가 그냥 평범한 login_fail(low)로만 기록돼서 오타와 구분 없이 묻혔음
+// (감사 로그 위험도가 "무슨 이벤트인가"만 보고 "입력값이 어떻게 생겼는가"는 전혀 안 봤기 때문).
+// 성공 여부와 무관하게 공격 시도 자체를 별도 이벤트(high)로 남겨서 놓치지 않게 한다.
+// 흔한 SQLi 구문(따옴표+OR/AND, UNION SELECT, ;DROP 등, SQL 주석)만 보는 휴리스틱이라
+// 완전한 탐지는 아니고(우회 가능), 반대로 우연히 비슷한 문자열이 정상 입력에 섞이면
+// 오탐할 수도 있음 - 그래도 지금처럼 "전혀 안 보는 것"보다는 낫다고 판단.
+const SQLI_PATTERNS = [
+  /'\s*(or|and)\s+.{0,20}=/i, // ' OR '1'='1, ' AND 1=1
+  /\bunion\b\s+(all\s+)?\bselect\b/i, // UNION SELECT
+  /;\s*(drop|delete|update|insert|alter)\b/i, // ;DROP TABLE ...
+  /--\s|--$|#\s*$|\/\*/, // SQL 주석(-- / # / /* */) - 흔히 인증 우회에 쓰임(예: admin'--)
+  /\bsleep\s*\(/i, // SLEEP() 기반 블라인드 인젝션
+  /\bor\s+1\s*=\s*1\b/i, // OR 1=1
+];
+
+function findSqlInjectionPattern(value) {
+  if (!value) return null;
+  const match = SQLI_PATTERNS.find((pattern) => pattern.test(value));
+  return match ? match.source : null;
+}
+
+async function detectSqlInjectionPattern({ username, password, ip }) {
+  const usernamePattern = findSqlInjectionPattern(username);
+  const passwordPattern = findSqlInjectionPattern(password);
+  if (!usernamePattern && !passwordPattern) return;
+
+  // 이 로그는 audit:view(admin 전용) 권한으로만 조회 가능하고, 공격 시도의 실제 모양을
+  // 봐야 트리아지에 도움이 되므로(오탐인지 진짜 공격 도구 서명인지 구분) - username 필드처럼
+  // 마스킹하지 않고 원문을 남긴다(단, 로그 비대화 방지를 위해 LONG_INPUT_MAX_LENGTH로 자름).
+  await logAudit(null, "login_anomaly_sqli_pattern", "login_attempt", null, {
+    ip,
+    field: usernamePattern ? "username" : "password",
+    matchedPattern: usernamePattern || passwordPattern,
+    payloadSample: (usernamePattern ? username : password).slice(0, LONG_INPUT_MAX_LENGTH),
+  });
+}
+
 // 로그인 시도 1건마다 호출: 두 기준을 갱신하고, 기준을 넘었으면 audit_log에 이상탐지 이벤트를 남긴다.
 // 반환값은 없음 - 탐지되어도 로그인 자체를 막지는 않는다 (그건 loginLimiter의 역할).
 // isAdmin: 이 계정이 실제 존재하는 admin 계정인지 (반복 실패 임계값을 다르게 적용하기 위함)
@@ -161,6 +199,7 @@ router.post("/login", loginLimiter, async (req, res) => {
 
   // 비밀번호 검증(DB 조회, bcrypt 연산)보다 먼저 확인 - 불필요한 연산을 태우지 않기 위함
   await detectLongInput({ username, password, ip: req.ip });
+  await detectSqlInjectionPattern({ username, password, ip: req.ip });
 
   try {
     // [보안 강화 #1 SQL Injection] Prepared Statement로 입력값을 쿼리 구조와 분리.
