@@ -15,6 +15,16 @@ echo $! > .run/was.pid
 nohup bash -c "cd frontend && exec python3 serve.py 5500" > .run/frontend.log 2>&1 &
 echo $! > .run/frontend.pid
 
+# [2026-09-14] pii_masking.py의 이름 마스킹 2차 안전망(spaCy 한국어 NER)이 쓰는 모델.
+# requirements.txt의 spacy 패키지만으로는 모델이 안 딸려와서, 이 모델 없이 배포하면 경고
+# 로그만 남기고 조용히 비활성 상태로 뜬다(서비스 자체는 안 죽음 - pii_masking.py 참고).
+# 이미 설치돼 있으면 아무것도 안 하고 넘어가도록 확인 후에만 다운로드(매 재시작마다 네트워크
+# 호출하지 않기 위함).
+if ! python3 -c "import ko_core_news_sm" 2>/dev/null; then
+  echo "spaCy 한국어 NER 모델(ko_core_news_sm) 설치 중..."
+  python3 -m spacy download ko_core_news_sm
+fi
+
 # 챗봇 서비스는 tools_db.py(예약/진료기록 직접 조회)가 WAS와 동일한 MySQL에 접속해야 하므로
 # was/config.js의 기본값과 동일한 값을 환경변수로 넘겨준다. 실제 배포 시에는 .env 등으로 관리 권장.
 DB_HOST="${DB_HOST:-localhost}" \
