@@ -1360,6 +1360,80 @@ body.landing-page {
     color: var(--accent);
 }
 
+/* [2026-09-14] PII 스캔 카드 안에서 마스킹된 값을 펼쳐볼 수 있는 목록. 원문은 API가 애초에
+   내려주지 않으므로(masked_preview만 옴) 여기서 보여줘도 원문 노출 위험이 없다. */
+.pii-finding-list {
+    margin-top: 12px;
+    font-size: 12.5px;
+}
+
+.pii-finding-list summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.pii-finding-list ul {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.pii-finding-list li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 0;
+    border-top: 1px solid #f2f3f5;
+    color: var(--text-muted);
+}
+
+.pii-finding__time {
+    white-space: nowrap;
+    color: #97a1ac;
+}
+
+.pii-finding__field {
+    background: var(--mint);
+    color: var(--navy);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11.5px;
+}
+
+.pii-finding__preview {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    color: #52606d;
+}
+
+.pii-finding__badge {
+    margin-left: auto;
+    background: #eef0f2;
+    color: #97a1ac;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+}
+
+.audit-filter-select {
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 13.5px;
+    background: #fff;
+    color: var(--navy);
+}
+
+.pagination__page-label {
+    min-width: 70px;
+    text-align: center;
+    color: #555;
+    font-size: 14px;
+}
+
 @media (max-width: 720px) {
     .kpi-row {
         grid-template-columns: repeat(2, 1fr);

@@ -123,6 +123,49 @@ const PII_SOURCE_LABELS = {
     mysql_chat: '진료 예약 챗봇 대화 (MySQL)',
 };
 
+// [2026-09-14] 그동안 findings[]는 API 응답에 이미 있었는데(마스킹된 값 = masked_preview)
+// 화면이 건수만 보여주고 버려서, "위험 로그가 마스킹 처리된 것을 확인" 항목을 시연할 방법이
+// 없었음. 원문은 API도 절대 내려주지 않으므로(log_audit_tool.py scan_for_pii 참고)
+// 여기서도 masked_preview(=마스킹 이후 값)만 표시 — 원문 노출 위험 없음.
+function renderPiiFindingList(findings) {
+    const details = document.createElement('details');
+    details.className = 'pii-finding-list';
+
+    const summary = document.createElement('summary');
+    summary.textContent = `발견 내역 보기 (${findings.length}건)`;
+    details.appendChild(summary);
+
+    const ul = document.createElement('ul');
+    findings.forEach((finding) => {
+        const li = document.createElement('li');
+
+        const time = document.createElement('span');
+        time.className = 'pii-finding__time';
+        time.textContent = formatDateTime(finding.timestamp);
+
+        const field = document.createElement('span');
+        field.className = 'pii-finding__field';
+        field.textContent = finding.field;
+
+        const preview = document.createElement('span');
+        preview.className = 'pii-finding__preview';
+        preview.textContent = finding.masked_preview;
+
+        li.append(time, field, preview);
+
+        if (finding.known_exception) {
+            const badge = document.createElement('span');
+            badge.className = 'pii-finding__badge';
+            badge.textContent = '알려진 예외';
+            li.appendChild(badge);
+        }
+
+        ul.appendChild(li);
+    });
+    details.appendChild(ul);
+    return details;
+}
+
 function renderPiiScanRow(piiScanTrack) {
     const container = document.getElementById('piiScanRow');
     container.innerHTML = '';
@@ -147,6 +190,11 @@ function renderPiiScanRow(piiScanTrack) {
 
         stats.append(scanned, found);
         card.append(title, stats);
+
+        if (track.findings && track.findings.length > 0) {
+            card.appendChild(renderPiiFindingList(track.findings));
+        }
+
         container.appendChild(card);
     });
 }
@@ -188,6 +236,101 @@ function renderStaticFindings(findings) {
     });
 }
 
+// [2026-09-14] GET /api/audit-log(페이지네이션+risk 필터)는 백엔드에 이미 있었는데 이걸 호출하는
+// 화면이 없어서 "감사 로그 조회" 항목을 curl/DB 직접 조회로만 시연할 수 있었음. limit 상한이
+// 100(auditLog.js)이라 전체를 한 번에 받아 클라이언트에서 자르는 방식(board.js 등과 동일한 패턴)
+// 대신, 서버가 원래 의도한 대로 offset 기반으로 페이지씩 받아온다. 총 건수 API가 없어 번호형
+// 페이지네이션은 못 만들고, 이번 페이지가 PAGE_SIZE만큼 꽉 찼는지로 "다음" 가능 여부만 판단한다.
+const AUDIT_HISTORY_PAGE_SIZE = 20;
+let auditHistoryOffset = 0;
+let auditHistoryHasNext = false;
+
+function renderAuditHistoryTable(rows) {
+    const tbody = document.getElementById('auditHistoryList');
+    const emptyState = document.getElementById('auditHistoryEmpty');
+    tbody.innerHTML = '';
+    emptyState.hidden = rows.length > 0;
+
+    rows.forEach((row) => {
+        const tr = document.createElement('tr');
+
+        const timeTd = document.createElement('td');
+        timeTd.className = 'col-date';
+        timeTd.textContent = formatDateTime(row.created_at);
+
+        const sevTd = document.createElement('td');
+        const pill = document.createElement('span');
+        const meta = SEVERITY_META[String(row.risk_level).toUpperCase()] || SEVERITY_META.NONE;
+        pill.className = `status-pill severity-pill ${meta.className}`;
+        pill.textContent = meta.label;
+        sevTd.appendChild(pill);
+
+        const actorTd = document.createElement('td');
+        actorTd.textContent = row.actor_username || row.actor_id || '-';
+
+        const actionTd = document.createElement('td');
+        actionTd.textContent = row.action;
+
+        const targetTd = document.createElement('td');
+        targetTd.textContent = row.target_type ? `${row.target_type} #${row.target_id ?? '-'}` : '-';
+
+        const detailTd = document.createElement('td');
+        detailTd.textContent = row.detail ? JSON.stringify(row.detail) : '-';
+
+        tr.append(timeTd, sevTd, actorTd, actionTd, targetTd, detailTd);
+        tbody.appendChild(tr);
+    });
+}
+
+function renderAuditHistoryPagination() {
+    const container = document.getElementById('auditHistoryPagination');
+    container.innerHTML = '';
+
+    function makeButton(label, disabled, onClick) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = label;
+        btn.disabled = disabled;
+        if (!disabled) btn.addEventListener('click', onClick);
+        return btn;
+    }
+
+    const pageLabel = document.createElement('span');
+    pageLabel.className = 'pagination__page-label';
+    pageLabel.textContent = `페이지 ${Math.floor(auditHistoryOffset / AUDIT_HISTORY_PAGE_SIZE) + 1}`;
+
+    container.appendChild(makeButton('‹ 이전', auditHistoryOffset === 0, () => {
+        auditHistoryOffset = Math.max(0, auditHistoryOffset - AUDIT_HISTORY_PAGE_SIZE);
+        loadAuditHistory();
+    }));
+    container.appendChild(pageLabel);
+    container.appendChild(makeButton('다음 ›', !auditHistoryHasNext, () => {
+        auditHistoryOffset += AUDIT_HISTORY_PAGE_SIZE;
+        loadAuditHistory();
+    }));
+}
+
+async function loadAuditHistory() {
+    const risk = document.getElementById('auditRiskFilter').value;
+    const params = new URLSearchParams({ limit: AUDIT_HISTORY_PAGE_SIZE, offset: auditHistoryOffset });
+    if (risk) params.set('risk', risk);
+
+    const res = await fetch(`${WAS_BASE}/api/audit-log?${params}`, { credentials: 'include' });
+    if (!res.ok) {
+        showToast('감사 로그 이력을 불러오지 못했습니다.');
+        return;
+    }
+    const rows = await res.json();
+    auditHistoryHasNext = rows.length === AUDIT_HISTORY_PAGE_SIZE;
+    renderAuditHistoryTable(rows);
+    renderAuditHistoryPagination();
+}
+
+document.getElementById('auditRiskFilter').addEventListener('change', () => {
+    auditHistoryOffset = 0;
+    loadAuditHistory();
+});
+
 async function loadDashboard() {
     const res = await fetch(`${WAS_BASE}/api/audit-log/summary`, { credentials: 'include' });
     if (!res.ok) {
@@ -214,6 +357,7 @@ async function loadDashboard() {
 
 document.getElementById('refreshButton').addEventListener('click', () => {
     loadDashboard();
+    loadAuditHistory();
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {
@@ -229,6 +373,6 @@ const AUTO_REFRESH_INTERVAL_MS = 10000;
 
 (async function init() {
     await loadUserInfo();
-    await loadDashboard();
+    await Promise.all([loadDashboard(), loadAuditHistory()]);
     setInterval(loadDashboard, AUTO_REFRESH_INTERVAL_MS);
 })();
