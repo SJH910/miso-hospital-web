@@ -6,4 +6,8 @@ google-generativeai
 pydantic
 pymysql
 python-dotenv
+# spacy 자체는 pip 패키지지만, pii_masking.py가 쓰는 한국어 모델(ko_core_news_sm)은 별도
+# 패키지라 여기 목록만으로는 안 딸려온다 - `python -m spacy download ko_core_news_sm`으로
+# 따로 설치해야 함(start.sh가 최초 실행 시 자동으로 확인·설치함). 없어도 서비스는 뜨지만
+# 이름 마스킹 2차 안전망(트리거 단어 없는 이름 탐지)이 조용히 비활성 상태가 된다.
 spacy
