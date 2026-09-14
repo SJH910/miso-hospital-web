@@ -20,6 +20,12 @@ const RISK_LEVELS = {
   // 않지만 지금까지는 그냥 평범한 login_fail(low)로만 기록되어 공격 시도 자체가 오타와
   // 구분 없이 묻히고 있었음. 성공 여부와 무관하게 "침해 시도가 의심되는 신호"라 high로 분류.
   login_anomaly_sqli_pattern: "high",
+  // [보안 강화 2026-09-14] express.json() 기본 요청 크기 제한(100KB)을 넘는 요청은 body-parser가
+  // 라우트 핸들러 진입 전에 막아버려서, 지금까지는 login_anomaly_long_input(아래 medium)조차
+  // 기록 안 되고 그냥 500 에러로 끝났음 - "긴 문자열 미탐"의 극단적인 경우. server.js의 에러
+  // 핸들러에서 이 이벤트를 별도로 남긴다. login_anomaly_long_input(200자 초과)보다 훨씬 큰
+  // 규모(100KB)라 medium으로 분류 - 같은 성격의 이벤트끼리 등급을 맞춤.
+  oversized_request_payload: "medium",
 
   // 중(MEDIUM) - 자동화된 공격 패턴일 가능성이 있으나, 특정 고위험 계정으로 한정되지는 않음.
   // 계정 역할 변경은 그 자체는 정상 운영 행위이지만 권한 상승을 동반할 수 있어 상시 관찰 대상으로 분류.
