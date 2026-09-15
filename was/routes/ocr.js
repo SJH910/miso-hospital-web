@@ -48,6 +48,14 @@ function averageWordConfidence(data) {
 
 // 후보 하나당 recognize() 한 번(수백ms~초 단위)이라 순차 실행 - 병렬로 돌리면 워커 풀
 // 크기(2)를 이 함수 하나가 다 차지해서 다른 요청이 완전히 막히므로 의도적으로 순차 처리한다.
+//
+// [코드 리뷰 반영 2026-09-15] 두 가지 문제가 있었음:
+//   1. recognize() 자체가 후보 2/3번째에서 예외를 던지면 그 예외가 그대로 전파돼, 이미 성공한
+//      앞선 후보 결과까지 통째로 버려지고 요청 전체가 500으로 실패했음 - 후보 하나 실패가
+//      다른 성공한 결과를 덮어쓸 이유가 없어서, 후보별로 try/catch해서 실패한 후보만 건너뛰게 함.
+//   2. 전처리(sharp) 실패가 로그 한 줄 없이 조용히 원본으로 폴백해서, 배포 환경에서 sharp
+//      네이티브 바이너리가 깨지면 "후보 3개가 사실 다 원본이라 개선 효과 0"인 상태를 아무도
+//      알아챌 수 없었음 - 실패 시 경고 로그를 남기도록 함.
 async function recognizeBestOf(worker, buffer) {
   let best = null;
   for (const [name, transform] of Object.entries(PREPROCESS_CANDIDATES)) {
@@ -55,13 +63,22 @@ async function recognizeBestOf(worker, buffer) {
     try {
       pre = await transform(buffer);
     } catch (err) {
+      console.warn(`[ocr preprocess] "${name}" 후보 전처리 실패, 원본으로 폴백:`, err.message);
       pre = buffer; // 특정 후보 전처리 자체가 실패해도(손상된 이미지 등) 원본으로는 계속 시도
     }
-    const { data } = await worker.recognize(pre, {}, { text: true, blocks: true });
-    const confidence = averageWordConfidence(data);
-    if (!best || confidence > best.confidence) {
-      best = { name, confidence, data };
+    try {
+      const { data } = await worker.recognize(pre, {}, { text: true, blocks: true });
+      const confidence = averageWordConfidence(data);
+      if (!best || confidence > best.confidence) {
+        best = { name, confidence, data };
+      }
+    } catch (err) {
+      // 이 후보의 인식 자체가 실패해도 이미 성공한 다른 후보 결과는 그대로 유지하고 계속 진행.
+      console.warn(`[ocr recognize] "${name}" 후보 인식 실패, 다른 후보로 계속 진행:`, err.message);
     }
+  }
+  if (!best) {
+    throw new Error("모든 전처리 후보에서 텍스트 인식이 실패했습니다.");
   }
   return best.data;
 }
@@ -255,11 +272,14 @@ router.post("/", verifyCsrfToken, requirePermission("ocr:scan"), ocrLimiter, (re
     }
 
     try {
-      const startedAt = Date.now();
       const workers = await getWorkerPool();
       const worker = workers[nextWorkerIndex % workers.length];
       nextWorkerIndex += 1;
 
+      // [코드 리뷰 반영 2026-09-15] startedAt을 getWorkerPool() 이후로 옮김 - 이전엔 워커 풀을
+      // 처음 만드는(모델 로드) 콜드 스타트 비용까지 측정에 포함돼서, 서버 첫 요청이나 풀 초기화
+      // 실패 후 재시도 시 화면에 실제 인식 시간보다 부풀려진 값이 표시됐음.
+      const startedAt = Date.now();
       const data = await recognizeBestOf(worker, req.file.buffer);
       const flatText = (data.text || "").trim();
       const text = buildTabularText(data, flatText).slice(0, MAX_TEXT_LENGTH);

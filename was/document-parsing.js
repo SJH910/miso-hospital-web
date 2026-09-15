@@ -81,7 +81,10 @@ function parseItemTable(text) {
         continue;
       }
     }
-    const match = line.match(/^\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9 ]{0,18})\s+([\d,]{1,12}\s?원)\s*$/);
+    // [코드 리뷰 반영 2026-09-15] 라벨 문자 클래스에 괄호를 추가 - was/routes/ocr.js가 2열짜리
+    // 행(라벨+금액 1개)을 탭 대신 공백으로 합치도록 바뀌면서, "체외충격파치료(ESWT)"처럼 괄호가
+    // 섞인 실제 항목명이 이 폴백 정규식에 안 걸려 표에서 조용히 빠지는 회귀가 실측 확인됨.
+    const match = line.match(/^\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9()（） ]{0,20})\s+([\d,]{1,12}\s?원)\s*$/);
     if (match && match[1].trim()) {
       rows.push({ label: match[1].trim(), values: [match[2]] });
     }
