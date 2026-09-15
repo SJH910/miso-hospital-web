@@ -33,12 +33,22 @@ def get_connection():
 def is_holiday(date_str: str) -> bool:
     """date_str: 'YYYY-MM-DD'. holidays 테이블(공휴일+병원 자체 휴진일)에 등록되어 있는지 확인.
     was/routes/holidays.js와 같은 테이블을 참조하므로, 관리자가 등록/삭제하면 양쪽 다 즉시 반영된다."""
+    # [버그 수정 2026-09-15] 원래 conn.close()가 마지막 줄에만 있어서, cursor.execute()/
+    # fetchone()에서 예외가 나면(DB 락 타임아웃 등) 연결이 안 닫힌 채 새고 있었음
+    # (BUG_REVIEW_2026-09-10.md 참고). finally로 옮겨서 예외 발생 여부와 무관하게 항상
+    # 닫히게 함 - close() 자체가 또 실패할 수 있어(연결이 이미 끊긴 경우) 그 실패는
+    # 무시하고 원래 예외/반환값을 그대로 보존한다.
     conn = get_connection()
-    with conn.cursor() as cursor:
-        cursor.execute("SELECT 1 FROM holidays WHERE holiday_date = %s", (date_str,))
-        row = cursor.fetchone()
-    conn.close()
-    return row is not None
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1 FROM holidays WHERE holiday_date = %s", (date_str,))
+            row = cursor.fetchone()
+        return row is not None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def book_appointment(patient_id: int, date_str: str, department: str) -> str:
@@ -53,6 +63,11 @@ def book_appointment(patient_id: int, date_str: str, department: str) -> str:
     except ValueError:
         return "예약 일시 형식을 이해하지 못했습니다. 'YYYY-MM-DD HH:MM:SS' 형식으로 다시 말씀해주세요."
 
+    # [버그 수정 2026-09-15] conn.close()가 성공 경로 끝에만 있어서 쿼리/commit 실패 시
+    # 연결이 새던 문제 - conn을 try 밖에서 None으로 초기화해두고 finally에서 닫아서,
+    # get_connection() 자체가 실패한 경우(conn이 아직 없음)와 쿼리 도중 실패한 경우 모두
+    # 안전하게 처리한다.
+    conn = None
     try:
         conn = get_connection()
         with conn.cursor() as cursor:
@@ -61,10 +76,15 @@ def book_appointment(patient_id: int, date_str: str, department: str) -> str:
                 (patient_id, department, reserved_at),
             )
         conn.commit()
-        conn.close()
         return f"{date_str}에 {department} 진료 예약을 요청했습니다. 병원 확인 후 확정됩니다."
     except Exception as e:
         return f"진료 예약 중 오류가 발생했습니다: {str(e)}"
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def check_appointments(patient_id: int) -> str:
@@ -72,6 +92,10 @@ def check_appointments(patient_id: int) -> str:
     if not patient_id:
         return "환자 식별 정보를 확인할 수 없어 예약 내역을 조회할 수 없습니다."
 
+    # [버그 수정 2026-09-15] 아래 세 함수(check_appointments/check_medical_records/
+    # check_scanned_documents) 전부 book_appointment와 동일한 패턴 - conn.close()가
+    # 성공 경로에만 있던 걸 finally로 옮겨 예외 시 연결이 새던 문제 수정.
+    conn = None
     try:
         conn = get_connection()
         with conn.cursor() as cursor:
@@ -81,7 +105,6 @@ def check_appointments(patient_id: int) -> str:
                 (patient_id,),
             )
             rows = cursor.fetchall()
-        conn.close()
 
         if not rows:
             return "최근 예약 내역이 없습니다."
@@ -93,6 +116,12 @@ def check_appointments(patient_id: int) -> str:
         return "\n".join(lines)
     except Exception as e:
         return f"예약 조회 중 오류가 발생했습니다: {str(e)}"
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def check_medical_records(patient_id: int) -> str:
@@ -102,12 +131,12 @@ def check_medical_records(patient_id: int) -> str:
     if not patient_id:
         return "환자 식별 정보를 확인할 수 없어 진료 기록을 조회할 수 없습니다."
 
+    conn = None
     try:
         conn = get_connection()
         with conn.cursor() as cursor:
             cursor.execute("SELECT id FROM medical_records WHERE patient_id = %s LIMIT 1", (patient_id,))
             row = cursor.fetchone()
-        conn.close()
 
         if not row:
             return "조회된 진료 기록이 없습니다."
@@ -115,6 +144,12 @@ def check_medical_records(patient_id: int) -> str:
         return "진료 기록이 존재합니다. 자세한 내역은 다음 링크에서 확인하실 수 있습니다.\n[진료 기록 바로가기](/records.html)"
     except Exception as e:
         return f"진료 기록 조회 중 오류가 발생했습니다: {str(e)}"
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 DOCUMENT_TYPE_LABELS = {"prescription": "처방전", "diagnosis": "진단서", "receipt": "영수증"}
@@ -129,6 +164,7 @@ def check_scanned_documents(patient_id: int) -> str:
     if not patient_id:
         return "환자 식별 정보를 확인할 수 없어 문서를 조회할 수 없습니다."
 
+    conn = None
     try:
         conn = get_connection()
         with conn.cursor() as cursor:
@@ -138,7 +174,6 @@ def check_scanned_documents(patient_id: int) -> str:
                 (patient_id,),
             )
             rows = cursor.fetchall()
-        conn.close()
 
         if not rows:
             return "조회된 문서(처방전/진단서/영수증)가 없습니다."
@@ -151,3 +186,9 @@ def check_scanned_documents(patient_id: int) -> str:
         return "\n".join(lines)
     except Exception as e:
         return f"문서 조회 중 오류가 발생했습니다: {str(e)}"
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
