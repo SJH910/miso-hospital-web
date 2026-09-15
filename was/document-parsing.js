@@ -69,19 +69,34 @@ function parseLabeledFields(text, knownFields) {
 // 건 "행마다 열 개수가 일정하게 2줄 이상 나올 때"로 제한한다. DB에는 저장 안 하고(파생 데이터라
 // extracted_text만 있으면 언제든 다시 계산 가능) API 응답 시점에 매번 계산한다.
 const DEFAULT_ITEM_HEADERS = ["금액", "본인부담금", "비급여"];
-const AMOUNT_CELL_PATTERN = /[\d,]{1,12}\s?원$/;
+// [수정 2026-09-15] "원"을 필수로 요구해서, 표 헤더에만 단위("금액(원)")를 적고 각 행 칸에는
+// 숫자만("18,500") 적는 실제 문서 형식을 전혀 못 잡던 문제 - "원"을 선택으로 바꿈. 대신
+// 아무 숫자나 다 통과시키지 않도록 천 단위 콤마 형식(\d{1,3}(,\d{3})*)으로 더 엄격하게 검사 -
+// "2025"처럼 콤마 없는 4자리 숫자(연도 등)는 여전히 안 걸림, "18,500"/"500"/"1,234,567"은 걸림.
+const AMOUNT_CELL_PATTERN = /^\d{1,3}(,\d{3})*원?$/;
 
 function parseItemTable(text) {
   const rows = [];
   for (const line of text.split("\n")) {
     if (line.includes("\t")) {
       const cells = line.split("\t").map((c) => c.trim()).filter(Boolean);
-      if (cells.length >= 2 && cells.slice(1).every((c) => AMOUNT_CELL_PATTERN.test(c))) {
-        rows.push({ label: cells[0], values: cells.slice(1) });
+      // [수정 2026-09-15] "첫 칸=라벨, 나머지 전부=금액"이라고 위치를 고정 가정했었는데,
+      // 실제 문서 중엔 "구분(급여/비급여) / 항목명 / 금액" 순서라 항목명이 가운데 칸에 오는
+      // 경우가 있어서 전혀 매칭이 안 됐음(구분값도 금액도 아닌 항목명이 "나머지" 취급됨).
+      // 위치 대신 "금액처럼 생겼는가"로 각 칸을 분류 - 금액처럼 생긴 칸은 값으로, 나머지는
+      // 합쳐서 라벨로 쓴다. 열이 몇 번째든 상관없이 동작하고, 기존 "라벨이 항상 첫 칸" 형식도
+      // 그대로 지원한다(라벨 칸이 하나뿐이면 결과가 동일).
+      const amountCells = cells.filter((c) => AMOUNT_CELL_PATTERN.test(c));
+      const labelCells = cells.filter((c) => !AMOUNT_CELL_PATTERN.test(c));
+      if (amountCells.length >= 1 && labelCells.length >= 1) {
+        rows.push({ label: labelCells.join(" "), values: amountCells });
         continue;
       }
     }
-    const match = line.match(/^\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9 ]{0,18})\s+([\d,]{1,12}\s?원)\s*$/);
+    // [코드 리뷰 반영 2026-09-15] 라벨 문자 클래스에 괄호를 추가 - was/routes/ocr.js가 2열짜리
+    // 행(라벨+금액 1개)을 탭 대신 공백으로 합치도록 바뀌면서, "체외충격파치료(ESWT)"처럼 괄호가
+    // 섞인 실제 항목명이 이 폴백 정규식에 안 걸려 표에서 조용히 빠지는 회귀가 실측 확인됨.
+    const match = line.match(/^\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9()（） ]{0,20})\s+([\d,]{1,12}\s?원)\s*$/);
     if (match && match[1].trim()) {
       rows.push({ label: match[1].trim(), values: [match[2]] });
     }
