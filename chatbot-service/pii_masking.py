@@ -49,6 +49,54 @@ except ImportError:
 # 그렇게 생긴 것으로 보임) 상수 하나로 모아 재사용한다.
 SEPARATOR = r'[\s\-\~_.]'
 
+# [2026-09-15, chatbot 브랜치 병합] 한국 성씨 화이트리스트 (단일 성 + 복성). "저는/나는 + N글자"만
+# 보고 이름으로 단정하면 "저는 아파요", "저는 미소병원 안내 챗봇입니다" 같은 비-이름 표현까지
+# 마스킹되는 오탐이 발생함(실제 사례: "미소병원"이 "미**원"으로 오탐 마스킹). 트리거 뒤 캡처된
+# 문자열이 실제 성씨로 시작할 때만 이름으로 취급해 오탐을 줄인다. 통계상 상위 빈도 성씨 위주로
+# 구성했으며, 목록에 없는 희귀 성씨는 여전히 놓칠 수 있다. 원래는 mask_pii() 함수 안에 지역
+# 변수로만 있었는데, 아래 _korean_name_in_span(모듈 레벨 컴파일 정규식)이 참조해야 해서
+# 모듈 레벨로 옮기고, 단일 성/복성(남궁 등)을 둘 다 지원하도록 정규식 검사로 바꿨다.
+KOREAN_SURNAMES = frozenset([
+    "남궁", "황보", "제갈", "선우", "사공", "서문", "독고", "동방",
+    "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임", "한", "오", "서", "신",
+    "권", "황", "안", "송", "전", "홍", "유", "류", "고", "문", "양", "손", "배", "백",
+    "허", "남", "심", "노", "하", "곽", "성", "차", "주", "우", "구", "나", "민", "진",
+    "지", "채", "엄", "원", "천", "방", "공", "현", "함", "변", "염", "여", "추", "도",
+    "소", "석", "선", "설", "마", "길", "연", "위", "표", "명", "기", "반", "왕", "금",
+    "옥", "육", "인", "맹", "제", "모", "피", "두", "감", "음", "사", "예", "경", "돈",
+    "어", "판", "빈", "후", "봉", "편",
+])
+# 정규식 alternation은 앞에서부터 매칭을 시도하므로, 복성("남궁")이 단성 뒤에 오면 "남"만
+# 매칭되고 "궁"이 남아버린다 - 긴 것부터 시도하도록 길이 내림차순 정렬.
+_SURNAME_ALT = '|'.join(sorted(KOREAN_SURNAMES, key=len, reverse=True))
+
+# [보안 수정 2026-09-15, chatbot 브랜치 병합] 성씨 화이트리스트만으로는 "저는 서울에 살아요"
+# -> "저는 서*에 살아요", "김치찌개 먹고 배가 아파요" -> "김**개..." 같은 새로운 오탐이 생김.
+# 한국어 성씨(김/이/서/강 등)와 완전히 같은 글자로 시작하는 지명·음식명이 매우 흔한데, "N글자
+# 뒤 조사 없이 바로 다음 조사(에/로 등)를 만나면 그 조사까지 통째로 이름으로 삼켜버리는" 경계
+# 판정 버그가 원인. 장소/도구 등을 나타내는 조사가 뒤에 오면 애초에 이름 후보로 확장하지
+# 못하게 막는다(문자 단위 negative lookahead).
+_NON_NAME_PARTICLES = [
+    "에서", "에게", "한테", "으로", "까지", "부터", "밖에", "처럼", "만큼", "마다",
+    "이랑", "랑", "로", "와", "과", "에",
+]
+_NON_NAME_PARTICLE_ALT = '|'.join(_NON_NAME_PARTICLES)
+_NAME_CHAR = r'(?:(?!' + _NON_NAME_PARTICLE_ALT + r')[가-힣])'
+
+# 이름 뒤에 흔히 붙는 조사/어미 경계 - name_pattern1의 lookahead 목록과 동일하게 맞춤.
+# lookahead(?=)이므로 매치 결과(m.group(0))에는 조사/어미가 포함되지 않고 이름만 남는다.
+# [보안 수정 2026-09-15] 원래 있던 \b(단어 경계) 항목을 뺐다 - "나는 강남역 근처에 있어요"
+# 재현 확인: \s*(선택적 공백)를 소비한 뒤 \b를 보는 구조라, "이름 뒤 공백 + 아무 글자"면
+# 거의 항상 통과해버려서(공백->글자 전환은 늘 단어 경계이므로) 사실상 무제한 통과 구멍이었음.
+# 실제 이름 뒤에 오는 표현(은/는/이/가/야/입니다/이에요/라고/인데 등)은 이미 다 명시돼 있고
+# 문장 끝(.$/,)도 따로 있어서, \b가 없어도 정상적인 이름 인식은 그대로 유지되고 "이름 뒤
+# 공백 + 목록에 없는 무관한 단어"만 더 이상 통째로 삼키지 않는다.
+_NAME_TAIL_BOUNDARY = r'(?=입니다|이에요|야|이야|라고|인데|은|는|이|가|입니|요|\.|\,|$)'
+# NER 결과(ent.text)에서 "성씨로 시작 + 뒤에 이름 경계가 오는" 부분만 실제 이름으로 추출.
+# spaCy 한국어 모델이 조사가 붙은 이름을 entity span에 뒤 문맥까지 통째로 묶는 경우가 있어,
+# 라벨만 믿고 그대로 쓰는 대신 이 성씨 패턴으로 실제 이름 경계를 한 번 더 다듬는다.
+_korean_name_in_span = re.compile(r'^(?:' + _SURNAME_ALT + r')' + _NAME_CHAR + r'{1,3}?' + _NAME_TAIL_BOUNDARY)
+
 def build_spaced_regex(digit_counts):
     # digit_counts = [6, 7] -> 6 digits, then 7 digits
     parts = []
@@ -206,24 +254,20 @@ def mask_pii(text: str) -> str:
 
     # 3. 이름 (Name)
     # 문맥상 이름이 나오는 패턴을 잡아 마스킹 (lookahead 활용)
+    # [보안 수정 2026-09-14] 원래 "저는/제 이름은 + 2~5자 한글"이면 무조건 이름으로 취급해서
+    # "저는 아파요"→"저는 아*요", 챗봇 거절 메시지 "저는 미소병원 안내 챗봇입니다"→"저는
+    # 미**원 안내 챗봇입니다"처럼 일반 단어까지 오탐 마스킹하던 문제가 있었음 - 아래 mask_name의
+    # 성씨 화이트리스트 검사로 1차 방지.
+    # [보안 수정 2026-09-15, chatbot 브랜치 병합] 성씨 화이트리스트만으로는 "저는 서울에 살아요"
+    # -> "저는 서*에 살아요"처럼 지명·음식명이 성씨와 같은 글자로 시작할 때 조사까지 통째로
+    # 삼키는 새 오탐이 생겨서, 한글 캡처 문자를 [가-힣] 대신 _NAME_CHAR(장소·도구 조사로
+    # 시작하는 지점은 애초에 후보에서 제외)로 교체했다.
+    # [보안 수정 2026-09-15] 여기도 \b(단어 경계)를 뺐다 - _NAME_TAIL_BOUNDARY와 같은 이유
+    # ("나는 강남역 근처에 있어요"에서 "강남역"까지 통째로 이름 후보로 삼켜지던 버그, 위 참고).
     name_pattern1 = re.compile(
-        r'(이름은|이름이|저는|내 이름은|제 이름은|나는|난|내 이름이|제 이름이)\s+([가-힣]{2,5}?)(?=\s*(?:입니다|이에요|야|이야|라고|인데|은|는|이|가|입니|요|\b|\.|\,|$))|'
+        r'(이름은|이름이|저는|내 이름은|제 이름은|나는|난|내 이름이|제 이름이)\s+(' + _NAME_CHAR + r'{2,5}?)(?=\s*(?:입니다|이에요|야|이야|라고|인데|은|는|이|가|입니|요|\.|\,|$))|'
         r'(이름은|이름이|저는|내 이름은|제 이름은|나는|난|내 이름이|제 이름이)\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)'
     )
-
-    # [보안 수정 2026-09-14] 위 정규식은 "저는/제 이름은 + 2~5자 한글"이면 무조건 이름으로
-    # 취급해서 "저는 아파요"→"저는 아*요", "저는 관리자입니다"→"저는 관*자입니다",
-    # 챗봇 거절 메시지 "저는 미소병원 안내 챗봇입니다"→"저는 미**원 안내 챗봇입니다"처럼
-    # 일반 단어까지 오탐 마스킹하는 문제가 있었음(LogDB_plan.md 2026-09-10/09-14 기록 참고).
-    # 최소한의 보강으로, 한글 후보 단어의 첫 글자가 실제 성씨인 경우에만 이름으로 인정한다.
-    # 완전한 성씨 목록은 아니고(희귀 성씨는 여전히 놓칠 수 있음), 반대로 "김치"처럼 흔한
-    # 성씨(김)로 시작하는 일반 단어는 여전히 오탐될 수 있다 - 정규식/화이트리스트 방식의
-    # 구조적 한계이며, 이걸 근본적으로 없애려면 문맥 기반 개체명 인식(NER)이 필요하다.
-    KOREAN_SURNAMES = {
-        "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임", "한", "오", "서", "신",
-        "권", "황", "안", "송", "전", "홍", "유", "고", "문", "양", "손", "배", "백", "허",
-        "남", "심", "노", "하", "곽", "성", "차", "주", "우", "구", "나", "민", "진", "채",
-    }
 
     def mask_name(match):
         prefix = match.group(1) or match.group(3)
@@ -240,11 +284,13 @@ def mask_pii(text: str) -> str:
                 if mid == 0: mid = 1
                 masked_name = name[:mid] + '*' * (len(name) - mid)
         else:
-            # [보안 수정 2026-09-14] 성씨로 시작하지 않으면 이름이 아니라고 보고 원문 그대로 둔다.
-            if name[0] not in KOREAN_SURNAMES:
+            # 한국어 이름 처리 - 실제 성씨(단일 성/복성 모두)로 시작하지 않으면 이름이 아닌
+            # 것으로 보고 마스킹하지 않는다("저는 아파요", "저는 미소병원 안내 챗봇입니다" 방지).
+            # [2026-09-15] 복성("남궁" 등)까지 정확히 인식하려고 name[0] in SET 방식에서
+            # 성씨 alternation 정규식 매칭 방식으로 변경.
+            if not re.match(r'^(?:' + _SURNAME_ALT + r')', name):
                 return match.group(0)
 
-            # 한국어 이름 처리
             length = len(name)
             if length == 2:
                 masked_name = name[0] + '*'
@@ -254,11 +300,11 @@ def mask_pii(text: str) -> str:
                 masked_name = name[0] + '*' * (length - 2) + name[-1]
             else:
                 masked_name = name
-                
-        # 정규식에서 suffix를 포함하지 않고 lookahead로만 확인했으므로, 
+
+        # 정규식에서 suffix를 포함하지 않고 lookahead로만 확인했으므로,
         # 매치된 텍스트(접두사 + 이름)만 교체하면 뒤의 문맥은 그대로 유지됩니다.
         return f"{prefix} {masked_name}"
-    
+
     masked_text = name_pattern1.sub(mask_name, masked_text)
 
     # 4. 이메일 (Email)
@@ -266,7 +312,7 @@ def mask_pii(text: str) -> str:
     masked_text = email_pattern.sub('[MASKED_EMAIL]', masked_text)
 
     # 5. 차트 번호 (8자리 숫자)
-    # 이미 마스킹된 전화번호나 주민번호에 영향을 주지 않기 위해 단어 경계(\b)를 사용하고 
+    # 이미 마스킹된 전화번호나 주민번호에 영향을 주지 않기 위해 단어 경계(\b)를 사용하고
     # MASKED 키워드와 겹치지 않게 조심합니다.
     # 한국어 텍스트 특성상 띄어쓰기가 없으면 \b가 안 먹힐 수 있으므로
     # 앞뒤에 숫자나 영문자가 없는 8자리 숫자를 찾습니다.
@@ -274,34 +320,49 @@ def mask_pii(text: str) -> str:
     masked_text = chart_pattern.sub('[MASKED_CHART_NO]', masked_text)
 
     # 6. 문맥 없는 이름 마스킹 (spaCy NER)
+    # [보안 수정 2026-09-14] ko_core_news_md로 교체한 뒤에는 라벨 정확도가 충분히 검증돼서
+    # (홍길동->PS, 강남역/서울->LC, 김치찌개/미소병원->엔티티 미검출) 다시 라벨을 1차 신뢰
+    # 기준으로 사용한다 - PERSON/PS로 분류된 entity만 이름 후보로 본다.
+    # [보안 수정 2026-09-15, chatbot 브랜치 병합] entity span에 조사/어미(예: "김철수입니다"의
+    # "입니다")가 같이 묶여 들어오는 경우가 있어서, 성씨 패턴으로 실제 이름 부분만 트리밍한다.
+    # 성씨 화이트리스트에 없는 희귀 성씨라도 라벨이 PERSON/PS라면(모델을 믿고) entity 전체를
+    # 이름으로 마스킹한다 - 화이트리스트가 놓치는 희귀 성씨까지 NER 라벨로 보완하는 효과.
     if nlp is not None:
         doc = nlp(masked_text)
         # 인덱스 밀림을 방지하기 위해 뒤에서부터 교체
         for ent in reversed(doc.ents):
-            if ent.label_ in ["PERSON", "PS"]:
-                name = ent.text
-                # 이미 마스킹된 부분(*나 MASKED)이 포함되어 있다면 건너뜀
-                if '*' in name or 'MASKED' in name:
-                    continue
-                
-                length = len(name)
-                if length == 1:
-                    masked_name = '*'
-                elif length == 2:
-                    masked_name = name[0] + '*'
-                elif length == 3:
-                    masked_name = name[0] + '*' + name[2]
-                elif length >= 4:
-                    masked_name = name[0] + '*' * (length - 2) + name[-1]
-                else:
-                    masked_name = name
-                    
-                masked_text = masked_text[:ent.start_char] + masked_name + masked_text[ent.end_char:]
+            if ent.label_ not in ("PERSON", "PS"):
+                continue
+
+            ent_text = ent.text
+            # 이미 마스킹된 부분(*나 MASKED)이 포함되어 있다면 건너뜀
+            if '*' in ent_text or 'MASKED' in ent_text:
+                continue
+
+            m = _korean_name_in_span.match(ent_text)
+            if m:
+                name = m.group(0)
+            else:
+                # 성씨 화이트리스트에 없어도 라벨(PERSON/PS)을 믿고 entity 전체를 이름으로 처리
+                name = ent_text
+
+            length = len(name)
+            if length == 1:
+                masked_name = '*'
+            elif length == 2:
+                masked_name = name[0] + '*'
+            elif length == 3:
+                masked_name = name[0] + '*' + name[2]
+            else:
+                masked_name = name[0] + '*' * (length - 2) + name[-1]
+
+            replaced = masked_name + ent_text[len(name):]
+            masked_text = masked_text[:ent.start_char] + replaced + masked_text[ent.end_char:]
 
     return masked_text
 
 if __name__ == "__main__":
-    # Test cases
+    # Test cases (feature/ocr + chatbot 브랜치 테스트 케이스 합침, 중복 제거)
     test_inputs = [
         "제 주민번호는 900101-1234567 입니다.",
         "제 번호는 9001011234567이에요.",
@@ -320,9 +381,13 @@ if __name__ == "__main__":
         "내 이메일은 test@example.com 이야",
         "제 차트 번호는 12345678 인데요",
         "홍길동 취소해줘",
-        "아파요 김구"
+        "아파요 김구",
+        "저는 서울에 살아요",
+        "나는 강남역 근처에 있어요",
+        "김치찌개 먹고 배가 아파요",
+        "저는 미소병원 안내 챗봇입니다",
     ]
-    
+
     for t in test_inputs:
         print(f"Original: {t}")
         print(f"Masked  : {mask_pii(t)}")
