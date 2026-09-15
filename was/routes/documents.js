@@ -8,6 +8,7 @@ const requirePermission = require("../middleware/requirePermission");
 const { verifyCsrfToken } = require("../middleware/csrf");
 const { encryptBuffer, decryptBuffer } = require("../crypto-utils");
 const { parseDate, parseAmount, parseLabeledFields, parseItemTable, parseDisplayFields } = require("../document-parsing");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = express.Router();
 
@@ -239,7 +240,7 @@ router.get("/:id/image", requirePermission("documents:view"), async (req, res) =
 // requirePermission 없이 로그인 여부 + 본인 소유 여부만 확인 (쿼리 자체에 patient_id 포함 - IDOR 방지).
 // 챗봇의 진료기록 조회 도구(tools_db.py check_medical_records)가 안내하는 /records.html이
 // 이 API(및 /api/records - medical_records 테이블)를 함께 사용해 화면을 구성한다.
-router.get("/mine", async (req, res) => {
+router.get("/mine", asyncHandler(async (req, res) => {
   if (!req.session.patientId) {
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
@@ -251,9 +252,9 @@ router.get("/mine", async (req, res) => {
     [req.session.patientId]
   );
   res.json(rows.map((r) => ({ ...r, document_type_label: DOCUMENT_TYPE_LABELS[r.document_type] })));
-});
+}));
 
-router.get("/mine/:id", async (req, res) => {
+router.get("/mine/:id", asyncHandler(async (req, res) => {
   if (!req.session.patientId) {
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
@@ -269,7 +270,7 @@ router.get("/mine/:id", async (req, res) => {
   }
   const doc = rows[0];
   res.json({ ...doc, hasImage: Boolean(doc.hasImage), document_type_label: DOCUMENT_TYPE_LABELS[doc.document_type] });
-});
+}));
 
 // [2026-09-10] 환자 본인의 원본 이미지 조회 — "OCR 원문 재조회" 결정에서 admin만 대상이었던
 // 범위를 환자 본인 것까지 확장. requirePermission이 아니라 /mine/:id와 동일하게 세션의

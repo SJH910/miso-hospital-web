@@ -3,6 +3,7 @@ const pool = require("../db");
 const requirePermission = require("../middleware/requirePermission");
 const { hasPermission } = requirePermission;
 const { verifyCsrfToken } = require("../middleware/csrf");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ async function requireReservationView(req, res, next) {
   next();
 }
 
-router.get("/", requireReservationView, async (req, res) => {
+router.get("/", requireReservationView, asyncHandler(async (req, res) => {
   const canManage = await hasPermission(req.session.role, "reservations:manage");
   const canViewOwn = await hasPermission(req.session.role, "reservations:view:own");
 
@@ -60,11 +61,11 @@ router.get("/", requireReservationView, async (req, res) => {
   }
 
   return res.status(403).json({ message: "권한이 없습니다." });
-});
+}));
 
 const MAX_RESERVATIONS_PER_SLOT = 2;
 
-router.post("/", verifyCsrfToken, requirePermission("reservations:create"), async (req, res) => {
+router.post("/", verifyCsrfToken, requirePermission("reservations:create"), asyncHandler(async (req, res) => {
   const { department, reserved_at } = req.body;
   if (!department || typeof department !== "string" || department.length > 50) {
     return res.status(400).json({ message: "진료과를 확인해주세요." });
@@ -93,9 +94,9 @@ router.post("/", verifyCsrfToken, requirePermission("reservations:create"), asyn
     [req.session.patientId, department, reservedAt]
   );
   res.json({ id: result.insertId, patient_id: req.session.patientId, department, reserved_at: reservedAt, status: "requested" });
-});
+}));
 
-router.patch("/:id/status", verifyCsrfToken, requirePermission("reservations:manage"), async (req, res) => {
+router.patch("/:id/status", verifyCsrfToken, requirePermission("reservations:manage"), asyncHandler(async (req, res) => {
   const { status } = req.body;
   if (!VALID_STATUSES.includes(status)) {
     return res.status(400).json({ message: "status 값이 올바르지 않습니다." });
@@ -109,6 +110,6 @@ router.patch("/:id/status", verifyCsrfToken, requirePermission("reservations:man
     return res.status(404).json({ message: "예약을 찾을 수 없습니다." });
   }
   res.json({ id: Number(req.params.id), status });
-});
+}));
 
 module.exports = router;

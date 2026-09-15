@@ -2,12 +2,13 @@ const express = require("express");
 const pool = require("../db");
 const requirePermission = require("../middleware/requirePermission");
 const { verifyCsrfToken } = require("../middleware/csrf");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = express.Router();
 
 // 조회는 로그인한 누구나 가능하게 둔다 - 예약 화면/챗봇이 "이 날짜는 휴진입니다"를
 // 미리 안내하려면 환자도 이 목록을 볼 수 있어야 하므로 (등록/삭제만 관리자 전용).
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   if (!req.session.patientId) {
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
@@ -15,7 +16,7 @@ router.get("/", async (req, res) => {
     "SELECT id, holiday_date, reason FROM holidays ORDER BY holiday_date"
   );
   res.json(rows);
-});
+}));
 
 router.post("/", verifyCsrfToken, requirePermission("holidays:manage"), async (req, res) => {
   const { holiday_date, reason } = req.body;
@@ -40,12 +41,12 @@ router.post("/", verifyCsrfToken, requirePermission("holidays:manage"), async (r
   }
 });
 
-router.delete("/:id", verifyCsrfToken, requirePermission("holidays:manage"), async (req, res) => {
+router.delete("/:id", verifyCsrfToken, requirePermission("holidays:manage"), asyncHandler(async (req, res) => {
   const [result] = await pool.query("DELETE FROM holidays WHERE id = ?", [req.params.id]);
   if (result.affectedRows === 0) {
     return res.status(404).json({ message: "해당 휴진일을 찾을 수 없습니다." });
   }
   res.json({ id: Number(req.params.id) });
-});
+}));
 
 module.exports = router;

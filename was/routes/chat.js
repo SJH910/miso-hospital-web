@@ -3,11 +3,12 @@ const pool = require("../db");
 const config = require("../config");
 const { encryptText, decryptText, maskPii } = require("../crypto-utils");
 const { verifyCsrfToken } = require("../middleware/csrf");
+const asyncHandler = require("../middleware/asyncHandler");
 
 const router = express.Router();
 
 // 환자 본인의 상담 이력만 조회 (IDOR 방지: 세션의 patientId만 사용, URL 파라미터로 안 받음)
-router.get("/history", async (req, res) => {
+router.get("/history", asyncHandler(async (req, res) => {
   if (!req.session.patientId) {
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
@@ -32,14 +33,14 @@ router.get("/history", async (req, res) => {
     }
   }
   res.json(masked);
-});
+}));
 
 // 환자가 메시지를 보내면: (1) 원문 암호화 저장 (2) 챗봇 서비스에 질문+patient_id 전달해 답변 생성
 // (3) 답변도 암호화 저장 (4) 화면에는 마스킹된 텍스트만 응답
 //
 // [챗봇팀 요청사항 반영] report_merge.md 3.1 — 챗봇이 "누가 물어보는지" 알아야 본인 예약/진료기록을
 // 조회하는 도구(tools_db.py)를 쓸 수 있으므로, question과 함께 patient_id를 반드시 실어 보낸다.
-router.post("/", verifyCsrfToken, async (req, res) => {
+router.post("/", verifyCsrfToken, asyncHandler(async (req, res) => {
   if (!req.session.patientId) {
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
@@ -81,6 +82,6 @@ router.post("/", verifyCsrfToken, async (req, res) => {
   );
 
   res.json({ answer: maskPii(answer) });
-});
+}));
 
 module.exports = router;
