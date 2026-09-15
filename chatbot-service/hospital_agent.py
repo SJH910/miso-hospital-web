@@ -54,9 +54,18 @@ COMMON_DEPARTMENTS = [
 ]
 DEPARTMENT_PATTERN = re.compile(r"([가-힣]{2,6}과)")  # 목록에 없는 과를 위한 폴백 (오탐지 위험이 있어 2글자 이상만 허용)
 
+# [버그 수정 2026-09-15] "외과"가 "정형외과"/"신경외과"/"성형외과"/"흉부외과"의 부분 문자열이라,
+# 원래 순서(리스트에 적힌 순서)대로 매칭하면 "정형외과 예약해줘"에서 뒤쪽에 있는 "정형외과"보다
+# 앞쪽에 있는 "외과"가 먼저 매칭돼버려 정형외과 예약이 그냥 "외과"로 저장되는 문제가 있었음
+# (실사용 중 발견 - 정형외과로 예약했는데 관리자 화면엔 외과로 보임). 글자 수가 긴 이름부터
+# 확인하면 "정형외과" 전체가 먼저 매칭되어 "외과"로 조기 확정되지 않는다 - 리스트에 새 진료과가
+# 추가돼도(예: 나중에 "정형" 계열이 더 생기더라도) 같은 클래스의 버그가 재발하지 않도록, 리스트
+# 자체의 순서에 의존하지 않고 매 항목의 길이로 정렬해서 사용한다.
+_DEPARTMENTS_BY_LENGTH_DESC = sorted(COMMON_DEPARTMENTS, key=len, reverse=True)
+
 
 def find_department(text: str) -> Optional[str]:
-    for dept in COMMON_DEPARTMENTS:
+    for dept in _DEPARTMENTS_BY_LENGTH_DESC:
         if dept in text:
             return dept
     fallback_match = DEPARTMENT_PATTERN.search(text)
