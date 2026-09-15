@@ -11,6 +11,8 @@ API가 서로 다른 계산을 하게 되는 걸 피하기 위해서다.
      보여준다. mysql_audit과 달리 known_exception 대상도 아니다(KNOWN_EXCEPTION_SOURCES 참고).
 """
 
+import threading
+import time
 from collections import Counter
 from datetime import datetime, timezone
 
@@ -25,6 +27,21 @@ from log_audit_tool import (
 
 MAX_NOTABLE = 20
 MAX_FINDINGS_PER_SOURCE = 20
+
+# [성능 수정 2026-09-15] 매 호출마다 감사로그 전체(JSONL 전체 + SQLite 전체 + MySQL
+# chat_messages 전체)를 복호화하고 mask_pii()/evaluate_severity()로 재스캔하는 구조라,
+# 로그가 쌓일수록 요청 하나의 비용이 계속 커짐. 게다가 admin-audit-dashboard.js가 이
+# 엔드포인트를 10초 자동 폴링 + 수동 새로고침으로 반복 호출해서, 캐시가 없으면 관리자가
+# 대시보드를 켜두는 것만으로 이 전체 재스캔이 계속 반복 실행됨.
+# 임시방편: 짧은 TTL로 결과를 캐싱해 반복 폴링 중 대부분은 재계산을 건너뛰게 한다 - 화면에
+# 보이는 데이터/의미는 그대로 두고 "10초마다 똑같은 걸 또 계산하는" 낭비만 없앤다. 로그
+# 자체가 계속 쌓이는 근본 문제(요청 비용이 전체 이력 크기에 비례)는 해결 안 됨 - 그건
+# 리더 함수에 날짜 범위 필터를 추가하는 별도 작업이 필요하고, 그러면 KPI 통계가 "전체
+# 이력"에서 "최근 N일"로 의미가 바뀌므로 별도 논의 후 진행하기로 함.
+_CACHE_TTL_SECONDS = 20
+_cache_lock = threading.Lock()
+_cached_summary = None
+_cached_at = 0.0
 
 
 def _risk_level_track():
@@ -74,7 +91,7 @@ def _pii_scan_for_source(name, reader):
     }
 
 
-def build_audit_summary():
+def _compute_audit_summary():
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "risk_level_track": _risk_level_track(),
@@ -86,3 +103,25 @@ def build_audit_summary():
         # 목록을 그대로 노출한다(WAS 쪽에서 중복 정의하지 않기 위함).
         "static_findings": STATIC_FINDINGS,
     }
+
+
+def build_audit_summary():
+    global _cached_summary, _cached_at
+
+    now = time.monotonic()
+    with _cache_lock:
+        if _cached_summary is not None and (now - _cached_at) < _CACHE_TTL_SECONDS:
+            return _cached_summary
+
+    # 락 밖에서 계산 - 전체 복호화·재스캔은 수백ms 이상 걸릴 수 있어 락을 오래 쥐면
+    # 다른 요청들이 캐시 유효 여부 확인조차 못 하고 줄줄이 대기하게 됨. 캐시 만료 직후
+    # 동시에 여러 요청이 들어오면 그중 몇 개는 중복 계산할 수 있지만(락을 안 쓰는
+    # 대가), 계산 자체는 멱등이라 결과가 틀릴 위험은 없고 최신 결과로 캐시가 갱신될
+    # 뿐이다.
+    summary = _compute_audit_summary()
+
+    with _cache_lock:
+        _cached_summary = summary
+        _cached_at = now
+
+    return summary
