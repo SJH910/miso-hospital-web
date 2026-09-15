@@ -8,7 +8,19 @@ document.getElementById('chatToggleBtn').addEventListener('click', async () => {
     chatPanel.style.display = isOpen ? 'none' : 'flex';
     if (!isOpen && chatMessages.childElementCount === 0) {
         const messages = await fetchChatHistory();
-        messages.forEach((m) => renderChatBubble(chatMessages, m.sender, m.content));
+        if (messages.length === 0) {
+            // 대화 이력이 없는 첫 방문이면, 챗봇이 무엇을 도와줄 수 있는지 안내하는 시스템 메시지로 시작
+            renderChatBubble(
+                chatMessages,
+                'bot',
+                '안녕하세요! 저는 미소병원 안내 챗봇이에요.\n' +
+                    '진료 예약·예약 확인\n' +
+                    '진료기록·스캔 문서 조회\n' +
+                    '진료시간·위치 안내까지 도와드릴 수 있어요. 편하게 말씀해주세요!'
+            );
+        } else {
+            messages.forEach((m) => renderChatBubble(chatMessages, m.sender, m.content));
+        }
     }
 });
 
