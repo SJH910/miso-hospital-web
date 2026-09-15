@@ -50,6 +50,28 @@ function classifyRisk(action) {
   return RISK_LEVELS[action] || DEFAULT_RISK_LEVEL;
 }
 
+// [2026-09-15] risk_level(상/중/하)만으로는 "완전히 정상적인 활동"(로그인 성공 등)과
+// "아직 이상탐지 임계값에 안 걸렸을 뿐인 이벤트"가 같은 low 등급에 섞여 있어서, 관리자
+// 대시보드에서 "탐지된 위험 신호만" 보고 싶어도 걸러낼 방법이 없었음(로그인 성공/실패가
+// 반복 기록되며 실제 이상탐지 이벤트를 묻어버림). risk_level과는 독립된 축으로,
+// "이상탐지 로직이 만든 이벤트인가"만 별도로 표시한다.
+const ANOMALY_ACTIONS = new Set([
+  "login_anomaly_admin_repeated_failure",
+  "login_anomaly_admin_new_ip",
+  "login_anomaly_admin_new_location",
+  "login_anomaly_sqli_pattern",
+  "login_anomaly_repeated_failure",
+  "login_anomaly_high_frequency",
+  "login_anomaly_long_input",
+  "totp_verify_fail",
+  "totp_disabled",
+  "oversized_request_payload",
+]);
+
+function classifyCategory(action) {
+  return ANOMALY_ACTIONS.has(action) ? "anomaly" : "routine";
+}
+
 // 챗봇 쪽 masking.py의 이메일 마스킹 규칙(로컬파트 앞 3글자만 노출, 나머지 '*')과 동일한 방식을
 // 아이디에도 적용 - 두 로그 파이프라인의 마스킹 정책을 통일하기 위함.
 function maskUsername(username) {
@@ -72,4 +94,12 @@ function maskAuditDetail(detail) {
   return masked;
 }
 
-module.exports = { classifyRisk, maskUsername, maskAuditDetail, RISK_LEVELS, DEFAULT_RISK_LEVEL };
+module.exports = {
+  classifyRisk,
+  classifyCategory,
+  maskUsername,
+  maskAuditDetail,
+  RISK_LEVELS,
+  DEFAULT_RISK_LEVEL,
+  ANOMALY_ACTIONS,
+};

@@ -312,8 +312,10 @@ function renderAuditHistoryPagination() {
 
 async function loadAuditHistory() {
     const risk = document.getElementById('auditRiskFilter').value;
+    const category = document.getElementById('auditCategoryFilter').value;
     const params = new URLSearchParams({ limit: AUDIT_HISTORY_PAGE_SIZE, offset: auditHistoryOffset });
     if (risk) params.set('risk', risk);
+    if (category) params.set('category', category);
 
     const res = await fetch(`${WAS_BASE}/api/audit-log?${params}`, { credentials: 'include' });
     if (!res.ok) {
@@ -327,6 +329,11 @@ async function loadAuditHistory() {
 }
 
 document.getElementById('auditRiskFilter').addEventListener('change', () => {
+    auditHistoryOffset = 0;
+    loadAuditHistory();
+});
+
+document.getElementById('auditCategoryFilter').addEventListener('change', () => {
     auditHistoryOffset = 0;
     loadAuditHistory();
 });

@@ -60,12 +60,19 @@
         <section class="panel list-section" style="margin-bottom:24px;">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:10px;">
                 <h3 style="margin:0;">감사 로그 전체 이력</h3>
-                <select id="auditRiskFilter" class="audit-filter-select">
-                    <option value="">전체 등급</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                </select>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <select id="auditCategoryFilter" class="audit-filter-select">
+                        <option value="">전체 이벤트</option>
+                        <option value="anomaly">위험 탐지만</option>
+                        <option value="routine">일반 활동만</option>
+                    </select>
+                    <select id="auditRiskFilter" class="audit-filter-select">
+                        <option value="">전체 등급</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
             </div>
             <div style="overflow-x:auto;">
                 <table class="board-table">
