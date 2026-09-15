@@ -158,7 +158,12 @@ def chat_endpoint(req: ChatRequest, request: Request):
 # 프론트에 응답한다 - /chat과 동일하게 내부 서비스 호출만 허용(브라우저 직접 접근 차단).
 @app.get("/audit-summary")
 @limiter.limit("10/minute")
-async def audit_summary_endpoint(request: Request):
+# [성능 수정 2026-09-15] /chat과 정확히 같은 클래스의 버그 - async def였지만 verify_internal_caller()도
+# build_audit_summary()도 전부 동기 코드(파일 I/O, SQLite, pymysql, Fernet 복호화, mask_pii 스캔)라
+# await가 하나도 없었음. async def 라우트는 FastAPI가 스레드풀로 안 돌리고 이벤트루프에서 직접
+# 실행해서, 이 핸들러가 도는 동안 /chat을 포함한 서비스 전체가 멈췄음 - def로만 바꾸면 FastAPI가
+# 자동으로 스레드풀에서 돌려줌(2026-09-11에 chat_endpoint에서 이미 검증된 해법).
+def audit_summary_endpoint(request: Request):
     verify_internal_caller(request)
     return build_audit_summary()
 

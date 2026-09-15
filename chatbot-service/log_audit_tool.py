@@ -144,7 +144,7 @@ def read_audit_jsonl():
                     "record_id": raw.get("event_id"),
                     "timestamp": raw.get("timestamp"),
                     "actor_id": actor_id,
-                    # chatbot-service/audit-agent/risk_classification.py가 process_event() 안에서
+                    # chatbot-service/audit-agent/risk_classification.py가 prepare_event() 안에서
                     # 이미 계산해 raw(암호화 밖)에 남겨둔 값. 여기서 다시 판정하지 않는다.
                     "risk_level": raw.get("risk_level"),
                     "text_fields": {

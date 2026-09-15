@@ -38,15 +38,19 @@ class AuditEngine:
         self.crypto = AuditCrypto(key=encryption_key)
         self.masking = AuditMasking()  # 마스킹 객체 초기화
 
-    def process_event(self, event_id: str, action: str, payload: dict) -> dict:
+    def prepare_event(self, event_id: str, action: str, payload: dict) -> dict:
+        """
+        마스킹/위험도분류/암호화 등 해시체인과 무관한 부분만 처리한다. previous_hash를
+        아직 읽지 않으므로 여러 스레드가 동시에 호출해도 안전하다 (finalize_event와 분리한 이유).
+        """
         timestamp = datetime.utcnow().isoformat()
-        
+
         print(f"\n🔍 --- [디버깅] 이벤트 ID: {event_id} 파이프라인 진입 ---")
         # [보안 수정 2026-09-09] 여기 있던 "Step 0: 원본 페이로드" print가 마스킹(아래) 이전 시점에
         # 원본을 그대로 stdout에 찍고 있었음. start.sh가 uvicorn을 `> .run/chatbot.log`로 띄우기 때문에
         # 이 출력이 평문으로 로그 파일에 영구 누적되는 유출 경로였음 - 완전히 제거함.
         # 마스킹된 값은 바로 아래 [Step 1] print로 이미 확인 가능하므로 디버깅 가시성은 유지됨.
-        # 1. PII 마스킹 처리 
+        # 1. PII 마스킹 처리
         masked_payload = self.masking.mask_payload(payload)
         print(f"👉 [Step 1] 마스킹 완료: {masked_payload}")
 
@@ -67,22 +71,29 @@ class AuditEngine:
         # 2. 마스킹이 완료된 안전한 데이터를 암호화
         encrypted_payload = self.crypto.encrypt_payload(masked_payload)
         print(f"👉 [Step 2] 암호화 완료: {encrypted_payload[:40]}... (생략)")
-       
+
         # 3. 보존 만료일 산출
         expiry_date = self.retention.calculate_expiry(timestamp)
         print(f"👉 [Step 3] 만료일 산출: {expiry_date}")
-       
+
         # 4. 통합 리포트 데이터 조립 (해시 생성 전)
-        audit_record = {
+        return {
             "event_id": event_id,
             "timestamp": timestamp,
             "action": action,
             "risk_level": risk_level,
             "payload_encrypted": encrypted_payload,
             "expiry_date": expiry_date,
-            "previous_hash": self.hash_chain.previous_hash
         }
-        
+
+    def finalize_event(self, audit_record: dict) -> dict:
+        """
+        해시체인 이어붙이기. previous_hash를 읽고 갱신하는 부분이라, 호출 측(audit_decorator의
+        _hash_chain_lock)에서 직렬화된 상태로만 호출해야 한다 - 그렇지 않으면 두 스레드가 같은
+        previous_hash를 읽어 체인이 갈라질 수 있다.
+        """
+        audit_record["previous_hash"] = self.hash_chain.previous_hash
+
         # 5. 해시 체인 생성 (데이터 무결성 검증)
         current_hash = self.hash_chain.generate_hash(audit_record)
         print(f"👉 [Step 4] 해시 생성 완료: {current_hash}")

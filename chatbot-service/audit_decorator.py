@@ -4,6 +4,7 @@ import json
 import functools
 import uuid
 import traceback
+import threading
 from pathlib import Path
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -78,16 +79,21 @@ audit_logger.addHandler(rotating_handler)
 # 5. 비동기 처리용 ThreadPool
 executor = ThreadPoolExecutor(max_workers=2)
 
+# previous_hash 읽기 -> 해시 계산 -> 파일 append는 스레드 간 순서가 어긋나면 해시체인이
+# 갈라지므로(각 스레드가 같은 previous_hash를 읽어버림) 이 구간만 락으로 직렬화한다.
+# 마스킹/암호화 등 무거운 연산은 prepare_event()에서 락 밖에 두어 두 워커가 계속 병렬로 돈다.
+_hash_chain_lock = threading.Lock()
+
 def _async_process_audit(event_id, action, audit_payload):
     """비동기로 감사 로그 파이프라인과 저장을 수행하는 워커 함수"""
     try:
-        # 감사 파이프라인 (마스킹, 암호화, 해시체인 등)
-        audit_record = audit_engine_instance.process_event(
+        # 감사 파이프라인 중 해시체인과 무관한 부분 (마스킹, 위험도분류, 암호화 등)
+        audit_record = audit_engine_instance.prepare_event(
             event_id=event_id,
             action=action,
             payload=audit_payload
         )
-        
+
         # 4. 실시간 악성 위협 알림 (Console Alert)
         # 원본 페이로드의 입력값에 악성 키워드가 포함되었는지 확인
         malicious_keywords = ["지시사항 무시", "프롬프트 출력", "시스템 프롬프트", "이전 지시 무시"]
@@ -96,11 +102,14 @@ def _async_process_audit(event_id, action, audit_payload):
         if is_malicious:
             print(f"\n\033[91m[🚨 실시간 보안 위협 경고] 악성 인젝션 시도가 탐지되었습니다! EventID: {event_id}\033[0m")
 
-        # 로거를 통해 JSONL 파일 저장 (Rotation 적용)
-        audit_logger.info(json.dumps(audit_record, ensure_ascii=False))
-        
+        # 해시체인 이어붙이기 + 파일 append를 하나의 원자적 구간으로 묶는다
+        with _hash_chain_lock:
+            audit_record = audit_engine_instance.finalize_event(audit_record)
+            # 로거를 통해 JSONL 파일 저장 (Rotation 적용)
+            audit_logger.info(json.dumps(audit_record, ensure_ascii=False))
+
         print(f"✅ [Audit Async] 로그 저장 완료 (EventID={event_id})")
-        
+
     except Exception as audit_err:
         print(f"❌ [Audit System Error] 백그라운드 감사 로그 기록 실패: {audit_err}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
