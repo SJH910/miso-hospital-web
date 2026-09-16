@@ -19,8 +19,8 @@ const DUMMY_PATIENTS = [
   // 같이 쓰면 한 명이 접속할 때마다 다른 팀원들은 새 IP로 인식돼 막히는 문제가 있었음.
   // 근본 해결은 팀원마다 별도 계정을 두는 것 - 권한은 role='admin'이라 기존 admin과 완전히
   // 동일(별도 role_permissions 매핑 불필요), 아이디/비밀번호만 다르다.
-  { username: "admin2", password: "NW3qSsIgwG!48", name: "관리자2", rrn: "000000-2000000", role: "admin" },
-  { username: "admin3", password: "jRws3iKbn5#73", name: "관리자3", rrn: "000000-3000000", role: "admin" },
+  { username: "admin2", password: "admin_test_456!", name: "관리자2", rrn: "000000-2000000", role: "admin" },
+  { username: "admin3", password: "admin_test_789!", name: "관리자3", rrn: "000000-3000000", role: "admin" },
 ];
 
 const DUMMY_POSTS = [

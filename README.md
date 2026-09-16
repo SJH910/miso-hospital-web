@@ -9,8 +9,8 @@ patient2	pw5678	patient
 patient3	qwerty1	patient
 staff1	staff1234	staff
 admin	admin_test_123!	admin
-admin2	NW3qSsIgwG!48	admin
-admin3	jRws3iKbn5#73	admin
+admin2	admin_test_456!	admin
+admin3	admin_test_789!	admin
 newpatient1	newpass123	patient
 
 
@@ -41,7 +41,7 @@ bash stop.sh    # 종료: .run/*.pid에 저장된 PID로 세 프로세스를 종
 
 환경변수(선택, 운영 배포 시 필수): `SESSION_SECRET`, `RRN_ENCRYPTION_KEY`(32바이트 hex), `FRONTEND_ORIGIN`, `USE_HTTPS=true`
 
-테스트 계정 (`was/seed.js` 참고): `patient1`/`pass1234`, `patient2`/`pw5678`, `patient3`/`qwerty1`(모두 일반 환자), `staff1`/`staff1234`(원무/접수), `admin`/`admin_test_123!`, `admin2`/`NW3qSsIgwG!48`, `admin3`/`jRws3iKbn5#73`(관리자 — 문서 스캔·계정 관리·진료기록 작성·감사 로그 조회 가능. 신규 IP 로그인 이상탐지가 아이디 단위라 팀원마다 별도 계정 사용 권장)
+테스트 계정 (`was/seed.js` 참고): `patient1`/`pass1234`, `patient2`/`pw5678`, `patient3`/`qwerty1`(모두 일반 환자), `staff1`/`staff1234`(원무/접수), `admin`/`admin_test_123!`, `admin2`/`admin_test_456!`, `admin3`/`admin_test_789!`(관리자 — 문서 스캔·계정 관리·진료기록 작성·감사 로그 조회 가능. 신규 IP 로그인 이상탐지가 아이디 단위라 팀원마다 별도 계정 사용 권장)
 
 > OCR 기능은 첫 실행 시 `tesseract.js`가 언어 데이터(`kor`/`eng`, 약 7MB)를 인터넷에서 자동으로 내려받습니다. 오프라인 환경에 배포한다면 사전에 받아둔 `.traineddata` 파일을 `was/`에 미리 배치해야 합니다.
 
