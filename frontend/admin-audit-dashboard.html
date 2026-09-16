@@ -60,7 +60,7 @@
         <section class="panel list-section" style="margin-bottom:24px;">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:10px;">
                 <h3 style="margin:0;">감사 로그 전체 이력</h3>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                     <select id="auditCategoryFilter" class="audit-filter-select">
                         <option value="">전체 이벤트</option>
                         <option value="anomaly">위험 탐지만</option>
@@ -72,6 +72,15 @@
                         <option value="medium">Medium</option>
                         <option value="low">Low</option>
                     </select>
+                    <label style="font-size:13px; color:#6b7785; display:flex; align-items:center; gap:6px;">
+                        시작
+                        <input type="datetime-local" id="auditFromFilter" step="1" class="audit-filter-select">
+                    </label>
+                    <label style="font-size:13px; color:#6b7785; display:flex; align-items:center; gap:6px;">
+                        종료
+                        <input type="datetime-local" id="auditToFilter" step="1" class="audit-filter-select">
+                    </label>
+                    <button type="button" id="auditTimeFilterClear" class="btn-action" style="width:auto; padding:6px 12px; font-size:13px;">시간 필터 초기화</button>
                 </div>
             </div>
             <div style="overflow-x:auto;">

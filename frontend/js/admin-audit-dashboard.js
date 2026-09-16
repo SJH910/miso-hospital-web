@@ -313,9 +313,16 @@ function renderAuditHistoryPagination() {
 async function loadAuditHistory() {
     const risk = document.getElementById('auditRiskFilter').value;
     const category = document.getElementById('auditCategoryFilter').value;
+    // datetime-local의 value는 초 단위까지 포함된 지역시각 문자열(예: "2026-09-15T17:03:05") -
+    // new Date()가 브라우저/서버(같은 시스템 타임존 가정) 양쪽에서 동일하게 지역시각으로
+    // 해석하므로 타임존 변환 없이 그대로 보낸다.
+    const from = document.getElementById('auditFromFilter').value;
+    const to = document.getElementById('auditToFilter').value;
     const params = new URLSearchParams({ limit: AUDIT_HISTORY_PAGE_SIZE, offset: auditHistoryOffset });
     if (risk) params.set('risk', risk);
     if (category) params.set('category', category);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
 
     const res = await fetch(`${WAS_BASE}/api/audit-log?${params}`, { credentials: 'include' });
     if (!res.ok) {
@@ -334,6 +341,23 @@ document.getElementById('auditRiskFilter').addEventListener('change', () => {
 });
 
 document.getElementById('auditCategoryFilter').addEventListener('change', () => {
+    auditHistoryOffset = 0;
+    loadAuditHistory();
+});
+
+document.getElementById('auditFromFilter').addEventListener('change', () => {
+    auditHistoryOffset = 0;
+    loadAuditHistory();
+});
+
+document.getElementById('auditToFilter').addEventListener('change', () => {
+    auditHistoryOffset = 0;
+    loadAuditHistory();
+});
+
+document.getElementById('auditTimeFilterClear').addEventListener('click', () => {
+    document.getElementById('auditFromFilter').value = '';
+    document.getElementById('auditToFilter').value = '';
     auditHistoryOffset = 0;
     loadAuditHistory();
 });
