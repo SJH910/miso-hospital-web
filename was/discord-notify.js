@@ -59,7 +59,14 @@ async function postToDiscord(webhookUrl, payload) {
   });
 }
 
-async function notifyDiscord(action, actor, detail, recordId, actorUsername) {
+// [2026-09-16] 발생 시각을 "YYYY-MM-DD HH:mm:ss" 형태로 - toLocaleString 기본 포맷은
+// 로케일/런타임에 따라 형식이 들쭉날쭉해서 항상 같은 모양이 보장되는 수동 포맷을 쓴다.
+function formatTimestamp(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+async function notifyDiscord({ action, actor, detail, recordId, actorUsername, ip, path }) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return; // 알림은 부가 기능 - 설정 없다고 본 서비스(감사 기록)를 막으면 안 됨
   if (!shouldSend(action, actor)) return;
@@ -67,10 +74,16 @@ async function notifyDiscord(action, actor, detail, recordId, actorUsername) {
   const [label, reason, severity] = EVENT_LABELS[action] || DEFAULT_LABEL;
   const emoji = SEVERITY_EMOJI[severity] || "🚨";
 
+  // [2026-09-16] 체크리스트("위험도·IP·경로·발생 시간 포함")에 맞춰 - 지금까지는 발생 시각이
+  // 메시지 본문에 아예 없었고(Discord 자체 게시 시각만 있었음), IP는 이벤트에 따라 detail
+  // 문자열 안에 JSON으로 묻혀 있거나(totp_disabled처럼) 아예 없는 경우도 있어서 라벨이 붙은
+  // 별도 줄로 명확히 보여준다. ip/path는 was/audit.js가 감사 로그 detail에서 꺼내 넘겨준다
+  // (각 logAudit 호출부가 req.ip/req.originalUrl을 detail에 채워 넣도록 같이 고침).
   const lines = [
     `${emoji} **[${severity}] ${label}**`,
     `사유: ${reason}`,
     `이벤트: \`${action}\``,
+    `발생 시각: ${formatTimestamp(new Date())}`,
   ];
   // [2026-09-16] 지금까지 숫자 계정 ID만 보여줘서("행위자: 5") 누구인지 바로 알아볼 수
   // 없었음 - actorUsername이 있으면 같이 보여준다(없으면 조회 실패 등으로 기존처럼 ID만).
@@ -81,6 +94,8 @@ async function notifyDiscord(action, actor, detail, recordId, actorUsername) {
         : `행위자(계정 ID): \`${actor}\``
     );
   }
+  if (ip) lines.push(`IP: \`${ip}\``);
+  if (path) lines.push(`경로: \`${path}\``);
   if (detail) lines.push(`상세: ${detail}`);
 
   // [2026-09-16] 알림만 보고 대시보드를 직접 찾아 들어가지 않아도, 클릭 한 번으로 확인할 수

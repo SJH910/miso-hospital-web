@@ -18,6 +18,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 
 _DEBOUNCE_SECONDS = 300  # 5분
 _recent_sent = {}  # (action, actor) -> 마지막 발송 시각(epoch)
@@ -58,10 +59,14 @@ def notify_discord(action: str, actor=None, detail: str = "", event_id: str = No
     label, reason, severity = _EVENT_LABELS.get(action, _DEFAULT_LABEL)
     emoji = _SEVERITY_EMOJI.get(severity, "\U0001f6a8")
 
+    # [2026-09-16] was/discord-notify.js와 동일한 이유 - 메시지 본문에 발생 시각이 아예
+    # 없었다(Discord 자체 게시 시각만 있었음). "위험도·IP·경로·발생 시간" 체크리스트에 맞춰
+    # 명시적으로 넣는다.
     lines = [
         f"{emoji} **[{severity}] {label}**",
         f"사유: {reason}",
         f"이벤트: `{action}`",
+        f"발생 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
     ]
     if actor is not None:
         lines.append(f"행위자(계정 ID): `{actor}`")

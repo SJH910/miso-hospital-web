@@ -85,7 +85,7 @@ async function detectLongInput({ username, password, ip }) {
   const passwordLen = (password || "").length;
   if (usernameLen > LONG_INPUT_MAX_LENGTH || passwordLen > LONG_INPUT_MAX_LENGTH) {
     await logAudit(null, "login_anomaly_long_input", "login_attempt", null, {
-      ip, usernameLength: usernameLen, passwordLength: passwordLen, maxAllowed: LONG_INPUT_MAX_LENGTH,
+      ip, path: "/api/login", usernameLength: usernameLen, passwordLength: passwordLen, maxAllowed: LONG_INPUT_MAX_LENGTH,
     });
   }
 }
@@ -122,6 +122,7 @@ async function detectSqlInjectionPattern({ username, password, ip }) {
   // 마스킹하지 않고 원문을 남긴다(단, 로그 비대화 방지를 위해 LONG_INPUT_MAX_LENGTH로 자름).
   await logAudit(null, "login_anomaly_sqli_pattern", "login_attempt", null, {
     ip,
+    path: "/api/login",
     field: usernamePattern ? "username" : "password",
     matchedPattern: usernamePattern || passwordPattern,
     payloadSample: (usernamePattern ? username : password).slice(0, LONG_INPUT_MAX_LENGTH),
@@ -140,7 +141,7 @@ async function detectAbnormalPattern({ username, ip, isFailure, isAdmin }) {
   if (ipAttempts.length === FREQUENCY_THRESHOLD) {
     // 임계값을 "넘어설 때"가 아니라 "정확히 도달한 순간"에만 기록해 같은 이벤트가 매 요청마다 중복 기록되지 않게 함
     await logAudit(null, "login_anomaly_high_frequency", "login_attempt", null, {
-      ip, count: ipAttempts.length, windowMs: FREQUENCY_WINDOW_MS,
+      ip, path: "/api/login", count: ipAttempts.length, windowMs: FREQUENCY_WINDOW_MS,
     });
   }
 
@@ -154,7 +155,7 @@ async function detectAbnormalPattern({ username, ip, isFailure, isAdmin }) {
     const threshold = isAdmin ? ADMIN_FAILURE_THRESHOLD : FAILURE_THRESHOLD;
     if (failures.length === threshold) {
       await logAudit(null, isAdmin ? "login_anomaly_admin_repeated_failure" : "login_anomaly_repeated_failure", "login_attempt", null, {
-        username, ip, count: failures.length, windowMs: FAILURE_WINDOW_MS, threshold,
+        username, ip, path: "/api/login", count: failures.length, windowMs: FAILURE_WINDOW_MS, threshold,
       });
     }
   } else {
@@ -200,7 +201,7 @@ async function recordAdminLocation({ username, ip, patientId }) {
 
   if (knownIps.size > 0 && !knownIps.has(ip)) {
     await logAudit(patientId, "login_anomaly_admin_new_ip", "patients", patientId, {
-      username, ip, knownIpCount: knownIps.size,
+      username, ip, path: "/api/login", knownIpCount: knownIps.size,
     });
   }
   await pool.query(
@@ -212,7 +213,7 @@ async function recordAdminLocation({ username, ip, patientId }) {
   if (region) {
     if (knownRegions.size > 0 && !knownRegions.has(region)) {
       await logAudit(patientId, "login_anomaly_admin_new_location", "patients", patientId, {
-        username, ip, region, knownRegionCount: knownRegions.size,
+        username, ip, path: "/api/login", region, knownRegionCount: knownRegions.size,
       });
     }
     await pool.query(
@@ -254,7 +255,7 @@ router.post("/login", loginLimiter, async (req, res) => {
     const passwordMatches = await bcrypt.compare(password, hashToCompare);
 
     if (!patient || !passwordMatches) {
-      logAudit(patient ? patient.id : null, "login_fail", "patients", patient ? patient.id : null, { username });
+      logAudit(patient ? patient.id : null, "login_fail", "patients", patient ? patient.id : null, { username, ip: req.ip, path: "/api/login" });
       await detectAbnormalPattern({ username, ip: req.ip, isFailure: true, isAdmin });
       return res.status(401).json({ success: false, message: "아이디 또는 비밀번호가 올바르지 않습니다." });
     }
@@ -272,10 +273,10 @@ router.post("/login", loginLimiter, async (req, res) => {
         });
       }
       if (!verifyTotpCode(patient.totp_secret, totpCode)) {
-        await logAudit(patient.id, "totp_verify_fail", "patients", patient.id, { username, ip: req.ip });
+        await logAudit(patient.id, "totp_verify_fail", "patients", patient.id, { username, ip: req.ip, path: "/api/login" });
         return res.status(401).json({ success: false, message: "인증 코드가 올바르지 않습니다." });
       }
-      await logAudit(patient.id, "totp_verify_success", "patients", patient.id, { username, ip: req.ip });
+      await logAudit(patient.id, "totp_verify_success", "patients", patient.id, { username, ip: req.ip, path: "/api/login" });
     }
 
     // [보안 강화 #4 세션 관리] 세션 고정 공격 방지를 위해 로그인 성공 시 세션 ID 재발급.
@@ -292,7 +293,7 @@ router.post("/login", loginLimiter, async (req, res) => {
       req.session.username = patient.username;
       // [보안 강화 #5 CSRF] 로그인 시 CSRF 토큰 발급. 이후 상태 변경 요청(POST 등)마다 이 값을 헤더로 첨부해야 함.
       req.session.csrfToken = crypto.randomBytes(24).toString("hex");
-      logAudit(patient.id, "login_success", "patients", patient.id, { username });
+      logAudit(patient.id, "login_success", "patients", patient.id, { username, ip: req.ip, path: "/api/login" });
       await detectAbnormalPattern({ username, ip: req.ip, isFailure: false, isAdmin });
       if (isAdmin) {
         await recordAdminLocation({ username, ip: req.ip, patientId: patient.id });
