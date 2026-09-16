@@ -19,13 +19,18 @@ const VALID_CATEGORIES = ["anomaly", "routine"];
 router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 100);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
-  const { risk, category } = req.query;
+  const { risk, category, from, to } = req.query;
 
   if (risk && !VALID_RISK_LEVELS.includes(risk)) {
     return res.status(400).json({ message: "risk 값이 올바르지 않습니다 (low/medium/high)." });
   }
   if (category && !VALID_CATEGORIES.includes(category)) {
     return res.status(400).json({ message: "category 값이 올바르지 않습니다 (anomaly/routine)." });
+  }
+  const fromDate = from ? new Date(from) : null;
+  const toDate = to ? new Date(to) : null;
+  if ((from && Number.isNaN(fromDate.getTime())) || (to && Number.isNaN(toDate.getTime()))) {
+    return res.status(400).json({ message: "from/to는 올바른 날짜 형식이어야 합니다." });
   }
 
   const conditions = [];
@@ -40,6 +45,16 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
     const actions = [...ANOMALY_ACTIONS];
     conditions.push(`al.action ${category === "anomaly" ? "IN" : "NOT IN"} (${actions.map(() => "?").join(",")})`);
     params.push(...actions);
+  }
+  // 특정 시:분:초 구간만 찾고 싶을 때(예: "17시 3분대에 뭐가 있었나") 쓰는 필터 - 프론트가
+  // <input type="datetime-local" step="1">로 초 단위까지 지정해 보내면 그대로 반영된다.
+  if (fromDate) {
+    conditions.push("al.created_at >= ?");
+    params.push(fromDate);
+  }
+  if (toDate) {
+    conditions.push("al.created_at <= ?");
+    params.push(toDate);
   }
   const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
