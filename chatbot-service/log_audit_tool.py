@@ -310,6 +310,10 @@ ADMIN_ANOMALY_ACTIONS = {
     "login_anomaly_admin_repeated_failure",
     "login_anomaly_admin_new_ip",
     "login_anomaly_admin_new_location",
+    # [2026-09-16] was/audit-severity.js와 목록을 동일하게 유지(파일 상단 설명 참고) - 이
+    # action은 WAS 쪽(감사 대시보드 열람)에서만 발생해 audit_jsonl에는 실제로 나타나지
+    # 않지만, 두 파일의 등급 기준을 항상 맞추는 규칙을 지키기 위해 여기도 추가한다.
+    "audit_access_new_location",
 }
 
 # 로그 이벤트로는 나타나지 않는 정적(코드/DB 스키마) 점검 결과. risk_level 흐름과는 완전히

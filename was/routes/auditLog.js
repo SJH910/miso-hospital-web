@@ -6,6 +6,10 @@ const { evaluateSeverity } = require("../audit-severity");
 const { classifyCategory, ANOMALY_ACTIONS, AUTH_ACTIONS } = require("../risk-classification");
 const { logAudit } = require("../audit");
 const asyncHandler = require("../middleware/asyncHandler");
+// [2026-09-16] 로그인 때 쓰는 관리자 신규 IP/지역 탐지를 감사 대시보드 열람 시점에도
+// 재사용 - isNewAdminLocation은 맵을 읽기만 하는 순수 함수라 로그인 흐름 밖에서 호출해도
+// 안전하다(auth.js 참고, router에 프로퍼티로 붙여 내보냄).
+const { isNewAdminLocation } = require("./auth");
 
 const router = express.Router();
 
@@ -28,6 +32,22 @@ function logViewOnce(actorId, action, detail) {
   if (now - (lastLoggedViewAt.get(key) || 0) < VIEW_LOG_DEBOUNCE_MS) return;
   lastLoggedViewAt.set(key, now);
   logAudit(actorId, action, null, null, detail);
+}
+
+// [2026-09-16] "누가 봤는지"뿐 아니라 "정상적인 위치에서 봤는지"까지 구분하기 위함 - 이미
+// 유효한 세션이 이 관리자 계정이 한 번도 접속한 적 없는 IP/지역에서 쓰이고 있다면(세션 탈취
+// 후 실사용 정황) 평범한 admin_action이 아니라 이상탐지(anomaly, high)로 기록한다.
+// req.session.username은 로그인 시점에 심어둔다(auth.js) - 옛 세션(이 변경 전에 로그인한
+// 세션)엔 없을 수 있으니 없으면 그냥 평소 위치로 간주(과탐지보다 미탐지가 안전한 기본값).
+function resolveViewAction(req, routineAction) {
+  if (
+    req.session.role === "admin" &&
+    req.session.username &&
+    isNewAdminLocation({ username: req.session.username, ip: req.ip })
+  ) {
+    return "audit_access_new_location";
+  }
+  return routineAction;
 }
 
 // 최신순 페이지네이션. limit은 남용 방지를 위해 100으로 상한.
@@ -88,17 +108,34 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
   }
   const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  logViewOnce(req.session.patientId, "audit_log_viewed", { risk: risk || null, category: category || null, actor: actorId || null });
-
-  const [rows] = await pool.query(
-    `SELECT al.id, al.actor_id, p.username AS actor_username, al.action, al.target_type, al.target_id, al.detail, al.risk_level, al.created_at
-     FROM audit_log al LEFT JOIN patients p ON p.id = al.actor_id
-     ${whereClause}
-     ORDER BY al.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
+  logViewOnce(
+    req.session.patientId,
+    resolveViewAction(req, "audit_log_viewed"),
+    { risk: risk || null, category: category || null, actor: actorId || null, ip: req.ip }
   );
-  res.json(rows.map((r) => ({ ...r, category: classifyCategory(r.action) })));
+
+  // [2026-09-16] 프론트에서 숫자 페이지 버튼(예: 1~10페이지 한 번에 표시)을 만들려면 전체
+  // 건수가 필요한데, 지금까지는 "이번 페이지가 꽉 찼는가"로만 다음 페이지 가능 여부를 판단해서
+  // (이전/다음 이동만 가능) 총 페이지 수를 알 수 없었다. COUNT(*)를 같은 WHERE 조건으로
+  // 병렬 조회해 total을 함께 내려준다.
+  const [[rows], [countRows]] = await Promise.all([
+    pool.query(
+      `SELECT al.id, al.actor_id, p.username AS actor_username, al.action, al.target_type, al.target_id, al.detail, al.risk_level, al.created_at
+       FROM audit_log al LEFT JOIN patients p ON p.id = al.actor_id
+       ${whereClause}
+       ORDER BY al.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS total FROM audit_log al ${whereClause}`,
+      params
+    ),
+  ]);
+  res.json({
+    rows: rows.map((r) => ({ ...r, category: classifyCategory(r.action) })),
+    total: countRows[0].total,
+  });
 }));
 
 // [체크리스트 7번 - 대시보드 2단계] mysql_audit(WAS 자신의 DB)은 여기서 직접 조회하고,
@@ -107,7 +144,7 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
 // 챗봇 서비스가 죽어있어도 WAS 자신의 데이터는 보여줘야 하므로, 그 부분만 실패로 표시하고
 // 요청 전체를 막지 않는다 (이 프로젝트 전반의 "외부 의존성 장애가 핵심 기능을 막으면 안 된다" 원칙).
 router.get("/summary", requirePermission("audit:view"), asyncHandler(async (req, res) => {
-  logViewOnce(req.session.patientId, "audit_dashboard_viewed", null);
+  logViewOnce(req.session.patientId, resolveViewAction(req, "audit_dashboard_viewed"), { ip: req.ip });
 
   const [rows] = await pool.query(
     "SELECT id, actor_id, action, risk_level, created_at FROM audit_log ORDER BY created_at DESC"
@@ -156,6 +193,39 @@ router.get("/summary", requirePermission("audit:view"), asyncHandler(async (req,
     static_findings: chatbotSummary ? chatbotSummary.static_findings : [],
     chatbot_error: chatbotError,
   });
+}));
+
+// [2026-09-16] Discord 알림 링크(?event=<id>)로 들어왔을 때, 필터/페이지를 몰라도 그 이벤트가
+// 있는 페이지로 자동 이동하기 위한 단일 조회. "/summary"보다 뒤에 둬야 한다 - Express가 경로를
+// 등록 순서대로 매칭해서, 이 "/:id"가 먼저 있으면 "/summary" 요청까지 id="summary"로 먹어버린다.
+// 페이지 위치는 필터 없는 기본 정렬(최신순) 기준의 순번(rank, 0-based)으로 계산 - 이 행보다
+// created_at이 더 최신인 행 개수와 같다. 필터가 걸린 상태로 들어왔다면 이 값이 안 맞을 수 있는데,
+// 알림 직후에는 보통 필터가 비어있는 상태로 열어보는 경우라 이 정도 가정으로 충분하다고 판단.
+router.get("/:id", requirePermission("audit:view"), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ message: "id가 올바르지 않습니다." });
+  }
+
+  const [rows] = await pool.query(
+    `SELECT al.id, al.actor_id, p.username AS actor_username, al.action, al.target_type, al.target_id, al.detail, al.risk_level, al.created_at
+     FROM audit_log al LEFT JOIN patients p ON p.id = al.actor_id
+     WHERE al.id = ?`,
+    [id]
+  );
+  if (rows.length === 0) {
+    return res.status(404).json({ message: "해당 이벤트를 찾을 수 없습니다." });
+  }
+  const row = rows[0];
+
+  // [버그 수정 2026-09-16] RANK는 MySQL 8.0+ 예약어(윈도우 함수)라 별칭으로 그냥 쓰면
+  // 문법 오류(ER_PARSE_ERROR) - rank_count처럼 예약어가 아닌 이름으로 바꿔야 함.
+  const [rankRows] = await pool.query(
+    "SELECT COUNT(*) AS rank_count FROM audit_log WHERE created_at > ?",
+    [row.created_at]
+  );
+
+  res.json({ ...row, category: classifyCategory(row.action), rank: rankRows[0].rank_count });
 }));
 
 module.exports = router;

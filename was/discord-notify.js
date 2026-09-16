@@ -11,6 +11,8 @@
 // 이 프로젝트가 감수하고 있는 트레이드오프다.
 //
 // 요구사항/동작 명세는 test-discord-notify.js 참고 (TDD로 먼저 작성됨).
+const config = require("./config");
+
 const DEBOUNCE_MS = 5 * 60 * 1000; // 5분
 const recentSent = new Map(); // "action::actor" -> 마지막 발송 시각(ms)
 
@@ -31,6 +33,10 @@ const EVENT_LABELS = {
   // 별도로 여기까지 오는 액션들 - HIGH/CRITICAL이 아니므로 INFO 등급으로 따로 표시한다.
   audit_log_viewed: ["감사 로그 이력 조회", "관리자가 감사 로그 대시보드(전체 이력)를 열람함 - 세션 탈취 시 침입자가 조용히 훔쳐볼 수 있는 화면이라 접근 자체를 알림", "INFO"],
   audit_dashboard_viewed: ["감사 대시보드 열람", "관리자가 감사 로그 대시보드(KPI 요약)를 열람함 - 세션 탈취 시 침입자가 조용히 훔쳐볼 수 있는 화면이라 접근 자체를 알림", "INFO"],
+  // [2026-09-16] 로그인 때 쓰는 신규 IP/지역 탐지(auth.js의 isNewAdminLocation)를 감사
+  // 대시보드 열람 시점에도 재사용 - 이미 유효한 세션이 낯선 위치에서 실제로 쓰이고 있다는
+  // 뜻이라, 단순 로그인 시도보다도 침해 가능성이 더 뚜렷하다고 보고 CRITICAL로 분류한다.
+  audit_access_new_location: ["감사 대시보드 낯선 위치 접근", "이미 로그인된 세션이 이 관리자 계정이 한 번도 접속한 적 없는 IP/지역에서 대시보드를 열람함 - 세션 탈취 후 실사용 정황", "CRITICAL"],
 };
 const DEFAULT_LABEL = ["미분류 위험 이벤트", "was/risk-classification.js에 새로 추가됐지만 아직 한글 라벨이 없는 high 등급 이벤트 - 코드 확인 필요", "HIGH"];
 const SEVERITY_EMOJI = { CRITICAL: "🔴", HIGH: "🟠", INFO: "🔵" };
@@ -45,7 +51,15 @@ function shouldSend(action, actor, now = Date.now()) {
   return true;
 }
 
-async function notifyDiscord(action, actor, detail) {
+async function postToDiscord(webhookUrl, payload) {
+  return fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function notifyDiscord(action, actor, detail, recordId, actorUsername) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return; // 알림은 부가 기능 - 설정 없다고 본 서비스(감사 기록)를 막으면 안 됨
   if (!shouldSend(action, actor)) return;
@@ -58,17 +72,55 @@ async function notifyDiscord(action, actor, detail) {
     `사유: ${reason}`,
     `이벤트: \`${action}\``,
   ];
-  if (actor !== undefined && actor !== null) lines.push(`행위자(계정 ID): \`${actor}\``);
+  // [2026-09-16] 지금까지 숫자 계정 ID만 보여줘서("행위자: 5") 누구인지 바로 알아볼 수
+  // 없었음 - actorUsername이 있으면 같이 보여준다(없으면 조회 실패 등으로 기존처럼 ID만).
+  if (actor !== undefined && actor !== null) {
+    lines.push(
+      actorUsername
+        ? `행위자: \`${actorUsername}\` (계정 ID: \`${actor}\`)`
+        : `행위자(계정 ID): \`${actor}\``
+    );
+  }
   if (detail) lines.push(`상세: ${detail}`);
 
+  // [2026-09-16] 알림만 보고 대시보드를 직접 찾아 들어가지 않아도, 클릭 한 번으로 확인할 수
+  // 있도록 감사 대시보드 링크를 붙인다. 로그인 세션이 있어야 조회 가능하므로 세션이 없으면
+  // 로그인 화면으로 갔다가 로그인 후 다시 이 링크로 돌아오게 되어있다(login.js 참고).
+  // recordId(=audit_log.id)가 있으면 ?event=&source=was로 실어보내 admin-audit-dashboard.js가
+  // "감사 로그 전체 이력" 표에서 해당 이벤트가 있는 페이지로 자동 이동 + 강조 표시하도록 한다 -
+  // source=was는 챗봇 쪽(audit_notify.py가 source=chatbot으로 보냄, record_id 체계가 달라
+  // "위험도 요약" 표에서 찾아야 함)과 구분하기 위함. recordId가 없으면 그냥 대시보드 첫 화면으로.
+  const dashboardLink = recordId !== undefined && recordId !== null
+    ? `${config.publicSiteUrl}/admin-audit-dashboard.html?event=${recordId}&source=was`
+    : `${config.publicSiteUrl}/admin-audit-dashboard.html`;
+
+  // [2026-09-16] 텍스트 URL 대신 눌러볼 수 있는 버튼(Link 스타일 컴포넌트, style:5)으로.
+  // Discord 웹훅도 components를 지원하지만(봇 토큰 불필요, 클릭 시 그냥 URL을 여는 것뿐이라
+  // 상호작용 응답이 필요 없음) 실제 웹훅 채널마다 지원 여부를 여기서 확인할 방법이 없어서,
+  // 거부되면(4xx) 텍스트 링크만으로 즉시 재시도한다 - 예쁜 버튼이 알림 자체를 놓치게 만들면
+  // 안 되므로 알림 전달을 항상 우선한다.
+  const contentWithButton = lines.join("\n");
+  const payloadWithButton = {
+    content: contentWithButton,
+    components: [
+      {
+        type: 1,
+        components: [
+          { type: 2, style: 5, label: "감사 대시보드 열기", url: dashboardLink },
+        ],
+      },
+    ],
+  };
+
   try {
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: lines.join("\n") }),
-    });
+    let res = await postToDiscord(webhookUrl, payloadWithButton);
     if (!res.ok) {
-      console.error(`[discord notify error] 웹훅 응답 오류: ${res.status}`);
+      console.error(`[discord notify error] 버튼 포함 요청 실패(${res.status}) - 텍스트 링크로 재시도`);
+      const fallbackPayload = { content: `${contentWithButton}\n대시보드 바로가기: ${dashboardLink}` };
+      res = await postToDiscord(webhookUrl, fallbackPayload);
+      if (!res.ok) {
+        console.error(`[discord notify error] 재시도도 실패: ${res.status}`);
+      }
     }
   } catch (err) {
     // 알림 실패가 감사 로그 기록 자체를 막으면 안 되므로 로그만 남기고 삼킨다.

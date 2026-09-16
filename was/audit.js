@@ -16,30 +16,51 @@ async function logAudit(actorId, action, targetType, targetId, detail) {
     const riskLevel = classifyRisk(action);
     const maskedDetail = maskAuditDetail(detail);
 
-    // [Discord 실시간 알림] riskLevel이 high면 관리자 웹 세션과 분리된 채널로 즉시 알림.
-    // await하지 않는다 - 알림 전송(네트워크 I/O)이 감사 로그 기록/원래 요청 처리를 지연시키면
-    // 안 되므로 fire-and-forget. notifyDiscord 자체도 내부에서 실패를 삼키지만, 한 번 더 감싼다.
+    const [result] = await pool.query(
+      "INSERT INTO audit_log (actor_id, action, target_type, target_id, detail, risk_level) VALUES (?, ?, ?, ?, ?, ?)",
+      [actorId, action, targetType ?? null, targetId ?? null, maskedDetail ? JSON.stringify(maskedDetail) : null, riskLevel]
+    );
+
+    // [Discord 실시간 알림] riskLevel이 high거나 대시보드 접근처럼 항상 알려야 하는 액션이면
+    // 관리자 웹 세션과 분리된 채널로 즉시 알림. await하지 않는다 - 알림 전송(네트워크 I/O)이
+    // 원래 요청 처리를 지연시키면 안 되므로 fire-and-forget. notifyDiscord 자체도 내부에서
+    // 실패를 삼키지만, 한 번 더 감싼다.
+    // [2026-09-16] INSERT를 먼저 해야 result.insertId를 알 수 있어서, 원래 INSERT보다 앞에
+    // 있던 이 호출을 뒤로 옮겼다 - 어차피 INSERT는 이미 await하고 있어 전체 지연 시간은
+    // 그대로고, insertId를 알림 링크(?event=<id>)에 실어 보내 관리자가 클릭 한 번으로
+    // 정확히 그 이벤트가 있는 페이지로 이동할 수 있게 한다.
     if (riskLevel === "high" || ALWAYS_NOTIFY_ACTIONS.has(action)) {
       // target이 있는 이벤트(로그인 이상탐지 등)는 지금까지처럼 target=type#id로 표시하고,
       // target이 없는 이벤트(대시보드 열람처럼 대상 개념 자체가 없는 액션)는 대신 detail을
-      // 보여준다 - [2026-09-16] 이전에는 target 없는 이벤트가 "target=-#-"라는 의미 없는
-      // placeholder만 보여주고, 정작 유용한 detail(예: 어떤 필터로 조회했는지)은 DB에만
-      // 저장되고 Discord 알림에는 전혀 전달되지 않고 있었음.
+      // 보여준다 - 이전에는 target 없는 이벤트가 "target=-#-"라는 의미 없는 placeholder만
+      // 보여주고, 정작 유용한 detail(예: 어떤 필터로 조회했는지)은 DB에만 저장되고 Discord
+      // 알림에는 전혀 전달되지 않고 있었음.
       const notifyDetail =
         targetType || targetId
           ? `target=${targetType ?? "-"}#${targetId ?? "-"}`
           : maskedDetail
             ? JSON.stringify(maskedDetail)
             : null;
-      notifyDiscord(action, actorId, notifyDetail).catch((err) => {
+      // [2026-09-16] Discord 메시지가 지금까지 숫자 계정 ID만 보여줘서("행위자: 5") 관리자가
+      // 매번 DB를 뒤져야 누군지 알 수 있었음 - 알림 직전에만 username을 조회해 같이 보여준다.
+      // 조회 자체가 실패해도(예: 탈퇴한 계정) 알림 자체를 막으면 안 되므로 실패는 삼키고
+      // ID만으로 계속 진행한다. high/ALWAYS_NOTIFY 이벤트만 타는 경로라 매 감사 로그 기록마다
+      // 쿼리가 느는 건 아니다.
+      (async () => {
+        let actorUsername = null;
+        if (actorId) {
+          try {
+            const [userRows] = await pool.query("SELECT username FROM patients WHERE id = ?", [actorId]);
+            actorUsername = userRows[0]?.username ?? null;
+          } catch (e) {
+            console.error("[discord notify] actor username 조회 실패", e.message);
+          }
+        }
+        return notifyDiscord(action, actorId, notifyDetail, result.insertId, actorUsername);
+      })().catch((err) => {
         console.error("[discord notify hook error]", err.message);
       });
     }
-
-    await pool.query(
-      "INSERT INTO audit_log (actor_id, action, target_type, target_id, detail, risk_level) VALUES (?, ?, ?, ?, ?, ?)",
-      [actorId, action, targetType ?? null, targetId ?? null, maskedDetail ? JSON.stringify(maskedDetail) : null, riskLevel]
-    );
   } catch (err) {
     console.error("[audit log error]", err);
   }

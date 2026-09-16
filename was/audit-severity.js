@@ -13,6 +13,10 @@ const ADMIN_ANOMALY_ACTIONS = new Set([
   "login_anomaly_admin_repeated_failure",
   "login_anomaly_admin_new_ip",
   "login_anomaly_admin_new_location",
+  // [2026-09-16] 이미 유효한 세션으로 낯선 위치에서 감사 대시보드를 열람한 정황 - 로그인
+  // 시도가 아니라 "이미 인증된 세션이 실사용되는 중"이라는 점에서 login_anomaly_admin_new_ip
+  // 보다도 침해 가능성이 더 뚜렷하다고 판단해 같은 수준으로 승격한다.
+  "audit_access_new_location",
 ]);
 
 function evaluateSeverity(row) {
