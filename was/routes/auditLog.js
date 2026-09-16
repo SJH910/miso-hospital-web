@@ -4,12 +4,29 @@ const config = require("../config");
 const requirePermission = require("../middleware/requirePermission");
 const { evaluateSeverity } = require("../audit-severity");
 const { classifyCategory, ANOMALY_ACTIONS } = require("../risk-classification");
+const { logAudit } = require("../audit");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = express.Router();
 
 const VALID_RISK_LEVELS = ["low", "medium", "high"];
 const VALID_CATEGORIES = ["anomaly", "routine"];
+
+// [2026-09-16] 이 대시보드(마스킹된 PII 미리보기·위험 이벤트가 담긴 화면)를 관리자가 언제
+// 열람했는지 지금까지 어디에도 안 남고 있었음 - 내부자가 몰래 들여다봐도 흔적이 없던 공백이라
+// 감사 이벤트로 기록한다. 다만 /summary는 admin-audit-dashboard.js가 10초마다 자동 폴링하므로
+// 매 폴링을 다 기록하면 "노이즈 문제"를 해결하려던 이 기능 자체가 새 노이즈가 됨 - 계정당
+// 일정 시간(5분) 안의 반복 열람은 최초 1건만 남기는 디바운스를 둔다.
+const VIEW_LOG_DEBOUNCE_MS = 5 * 60 * 1000;
+const lastLoggedViewAt = new Map(); // key: `${actorId}:${action}`
+
+function logViewOnce(actorId, action, detail) {
+  const key = `${actorId}:${action}`;
+  const now = Date.now();
+  if (now - (lastLoggedViewAt.get(key) || 0) < VIEW_LOG_DEBOUNCE_MS) return;
+  lastLoggedViewAt.set(key, now);
+  logAudit(actorId, action, null, null, detail);
+}
 
 // 최신순 페이지네이션. limit은 남용 방지를 위해 100으로 상한.
 // ?risk=high 처럼 위험도로, ?category=anomaly|routine처럼 "이상탐지 이벤트인가"로 필터링 가능 -
@@ -58,6 +75,8 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
   }
   const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
+  logViewOnce(req.session.patientId, "audit_log_viewed", { risk: risk || null, category: category || null });
+
   const [rows] = await pool.query(
     `SELECT al.id, al.actor_id, p.username AS actor_username, al.action, al.target_type, al.target_id, al.detail, al.risk_level, al.created_at
      FROM audit_log al LEFT JOIN patients p ON p.id = al.actor_id
@@ -75,6 +94,8 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
 // 챗봇 서비스가 죽어있어도 WAS 자신의 데이터는 보여줘야 하므로, 그 부분만 실패로 표시하고
 // 요청 전체를 막지 않는다 (이 프로젝트 전반의 "외부 의존성 장애가 핵심 기능을 막으면 안 된다" 원칙).
 router.get("/summary", requirePermission("audit:view"), asyncHandler(async (req, res) => {
+  logViewOnce(req.session.patientId, "audit_dashboard_viewed", null);
+
   const [rows] = await pool.query(
     "SELECT id, actor_id, action, risk_level, created_at FROM audit_log ORDER BY created_at DESC"
   );
@@ -118,7 +139,7 @@ router.get("/summary", requirePermission("audit:view"), asyncHandler(async (req,
     risk_level_tracks: chatbotSummary
       ? [mysqlAuditTrack, chatbotSummary.risk_level_track]
       : [mysqlAuditTrack],
-    pii_scan_track: chatbotSummary ? chatbotSummary.pii_scan_track : [],
+    pii_scan: chatbotSummary ? chatbotSummary.pii_scan : null,
     static_findings: chatbotSummary ? chatbotSummary.static_findings : [],
     chatbot_error: chatbotError,
   });

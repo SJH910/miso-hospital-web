@@ -40,6 +40,11 @@ const RISK_LEVELS = {
   totp_verify_success: "low",
   totp_enrolled: "low",
   patient_register: "low",
+  // [2026-09-16] 감사 로그 대시보드 자체를 열람하는 행위는 지금까지 어디에도 기록이
+  // 안 남았음 — 마스킹된 PII 미리보기·위험 이벤트가 담긴 화면이라, 내부자가 몰래
+  // 들여다봐도 흔적이 없던 공백. 정상적인 admin 업무이므로 low로 분류.
+  audit_log_viewed: "low",
+  audit_dashboard_viewed: "low",
 };
 
 // 목록에 없는 action(향후 추가되는 이벤트)은 안전 측으로 "low"가 아니라 "medium"으로 분류해
