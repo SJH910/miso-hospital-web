@@ -23,6 +23,22 @@ const ADMIN_MENU_ITEMS = [
     { href: 'admin-audit-dashboard.html', label: '감사 로그' },
 ];
 
+// [버그 수정 2026-09-16] 로그인 안 된 상태로 보호된 페이지(예: reservation.html)에 들어가면
+// 각 페이지의 loadUserInfo()가 /api/me 401을 보고 login.html로 리다이렉트하는데, 그 상태에서
+// 브라우저 "뒤로가기"를 누르면 브라우저가 페이지를 다시 요청하지 않고 bfcache(뒤로/앞으로
+// 가기 캐시)에서 그대로 복원한다 - 리다이렉트를 일으켰던 스크립트가 다시 실행되지 않아서,
+// 세션이 없는데도 로그인된 것처럼 보이는 페이지(예: 챗봇 위젯)가 그대로 뜬다. 이 상태로
+// CSRF 토큰이 필요한 요청(예약 등)을 보내면 sessionStorage에 토큰이 없어 "유효하지 않은
+// CSRF 토큰입니다"로 실패해서 원인을 알기 어려운 에러만 보게 됨(실사용 중 발견).
+// pageshow의 event.persisted로 bfcache 복원을 감지해 loadUserInfo를 다시 실행한다 - 세션이
+// 여전히 없으면 그제야 로그인 화면으로 보내진다. 각 페이지가 이미 최상위(전역 스코프)에
+// loadUserInfo를 정의해두므로, 여기 한 곳에서만 재실행을 걸어주면 페이지마다 따로 안 고쳐도 됨.
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted && typeof loadUserInfo === 'function') {
+        loadUserInfo();
+    }
+});
+
 // [XSS 방지] href/label은 이 파일에 고정된 값만 사용(외부 입력 없음) - textContent로만 대입.
 function renderNavLinks(role) {
     const container = document.getElementById('navLinks');
