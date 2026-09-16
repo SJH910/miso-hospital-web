@@ -40,6 +40,7 @@ async function attachAnswers(posts) {
 router.get("/", asyncHandler(async (req, res) => {
   if (!req.session.patientId) {
     logAuditOnce(`no_session:${req.ip}:${req.path}`, null, "admin_path_access_no_session", null, null, {
+      ip: req.ip,
       path: req.originalUrl,
       method: req.method,
     });
@@ -64,6 +65,7 @@ router.get("/", asyncHandler(async (req, res) => {
   }
 
   logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+    ip: req.ip,
     path: req.originalUrl,
     method: req.method,
     permission: "board:reply,board:read",
@@ -127,6 +129,7 @@ router.post("/:id/answer", verifyCsrfToken, requirePermission("board:reply"), as
 router.get("/:patientId", asyncHandler(async (req, res) => {
   if (!req.session.patientId) {
     logAuditOnce(`no_session:${req.ip}:${req.path}`, null, "admin_path_access_no_session", null, null, {
+      ip: req.ip,
       path: req.originalUrl,
       method: req.method,
     });
@@ -137,6 +140,7 @@ router.get("/:patientId", asyncHandler(async (req, res) => {
   const canRead = await hasPermission(req.session.role, "board:read");
   if (!canRead && !canReply) {
     logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+      ip: req.ip,
       path: req.originalUrl,
       method: req.method,
       permission: "board:reply,board:read",
@@ -146,6 +150,7 @@ router.get("/:patientId", asyncHandler(async (req, res) => {
   }
   if (!canReply && Number(req.params.patientId) !== req.session.patientId) {
     logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+      ip: req.ip,
       path: req.originalUrl,
       method: req.method,
       reason: "not_owner",

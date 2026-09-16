@@ -56,7 +56,19 @@ async function logAudit(actorId, action, targetType, targetId, detail) {
             console.error("[discord notify] actor username 조회 실패", e.message);
           }
         }
-        return notifyDiscord(action, actorId, notifyDetail, result.insertId, actorUsername);
+        // [2026-09-16] ip/path를 maskedDetail에서 꺼내 별도 필드로 넘긴다 - 지금까지는
+        // "상세" 한 줄 안에 JSON으로 뭉쳐 있어서 IP가 있는 이벤트도 없는 이벤트도 눈에 잘
+        // 안 띄었음(totp_disabled처럼 아예 안 남는 이벤트도 있었음 - 각 호출부에 ip/path를
+        // 채워 넣는 걸로 같이 고침). notifyDiscord가 "IP:"/"경로:" 줄로 명확히 보여준다.
+        return notifyDiscord({
+          action,
+          actor: actorId,
+          detail: notifyDetail,
+          recordId: result.insertId,
+          actorUsername,
+          ip: maskedDetail?.ip,
+          path: maskedDetail?.path,
+        });
       })().catch((err) => {
         console.error("[discord notify hook error]", err.message);
       });

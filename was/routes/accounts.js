@@ -38,7 +38,7 @@ router.post("/", verifyCsrfToken, requirePermission("patients:register"), asyncH
     "INSERT INTO patients (username, password, name, rrn, role) VALUES (?, ?, ?, ?, 'patient')",
     [username, hashedPassword, name, encryptedRrn]
   );
-  logAudit(req.session.patientId, "patient_register", "patients", result.insertId, { username });
+  logAudit(req.session.patientId, "patient_register", "patients", result.insertId, { username, ip: req.ip, path: req.originalUrl });
   res.json({ id: result.insertId, username, name, role: "patient" });
 }));
 
@@ -68,6 +68,8 @@ router.patch("/:id/role", verifyCsrfToken, requirePermission("accounts:manage"),
   logAudit(req.session.patientId, "account_role_change", "patients", targetId, {
     from: before[0]?.role,
     to: role,
+    ip: req.ip,
+    path: req.originalUrl,
   });
   res.json({ id: targetId, role });
 }));

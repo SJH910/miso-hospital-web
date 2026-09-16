@@ -10,6 +10,7 @@ const router = express.Router();
 function requireAdminSession(req, res, next) {
   if (!req.session.patientId) {
     logAuditOnce(`no_session:${req.ip}:${req.path}`, null, "admin_path_access_no_session", null, null, {
+      ip: req.ip,
       path: req.originalUrl,
       method: req.method,
     });
@@ -17,6 +18,7 @@ function requireAdminSession(req, res, next) {
   }
   if (req.session.role !== "admin") {
     logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+      ip: req.ip,
       path: req.originalUrl,
       method: req.method,
       requiredRole: "admin",
@@ -50,14 +52,14 @@ router.post("/verify-setup", verifyCsrfToken, asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "인증 코드가 올바르지 않습니다. 다시 시도해주세요." });
   }
   await pool.query("UPDATE patients SET totp_secret = ? WHERE id = ?", [secret, req.session.patientId]);
-  await logAudit(req.session.patientId, "totp_enrolled", "patients", req.session.patientId, {});
+  await logAudit(req.session.patientId, "totp_enrolled", "patients", req.session.patientId, { ip: req.ip, path: req.originalUrl });
   res.json({ success: true });
 }));
 
 // 해제 (분실 등으로 재등록이 필요할 때) - 본인만 가능
 router.delete("/", verifyCsrfToken, asyncHandler(async (req, res) => {
   await pool.query("UPDATE patients SET totp_secret = NULL WHERE id = ?", [req.session.patientId]);
-  await logAudit(req.session.patientId, "totp_disabled", "patients", req.session.patientId, {});
+  await logAudit(req.session.patientId, "totp_disabled", "patients", req.session.patientId, { ip: req.ip, path: req.originalUrl });
   res.json({ success: true });
 }));
 

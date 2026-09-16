@@ -104,7 +104,7 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
   logViewOnce(
     req.session.patientId,
     await resolveViewAction(req, "audit_log_viewed"),
-    { risk: risk || null, category: category || null, actor: actorId || null, ip: req.ip }
+    { risk: risk || null, category: category || null, actor: actorId || null, ip: req.ip, path: req.originalUrl }
   );
 
   // [2026-09-16] 프론트에서 숫자 페이지 버튼(예: 1~10페이지 한 번에 표시)을 만들려면 전체
@@ -137,7 +137,7 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
 // 챗봇 서비스가 죽어있어도 WAS 자신의 데이터는 보여줘야 하므로, 그 부분만 실패로 표시하고
 // 요청 전체를 막지 않는다 (이 프로젝트 전반의 "외부 의존성 장애가 핵심 기능을 막으면 안 된다" 원칙).
 router.get("/summary", requirePermission("audit:view"), asyncHandler(async (req, res) => {
-  logViewOnce(req.session.patientId, await resolveViewAction(req, "audit_dashboard_viewed"), { ip: req.ip });
+  logViewOnce(req.session.patientId, await resolveViewAction(req, "audit_dashboard_viewed"), { ip: req.ip, path: req.originalUrl });
 
   const [rows] = await pool.query(
     "SELECT id, actor_id, action, risk_level, created_at FROM audit_log ORDER BY created_at DESC"

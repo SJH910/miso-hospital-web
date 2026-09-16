@@ -36,6 +36,7 @@ async function isWithinBusinessHours(date) {
 function requireReservationView(req, res, next) {
   if (!req.session.patientId) {
     logAuditOnce(`no_session:${req.ip}:${req.path}`, null, "admin_path_access_no_session", null, null, {
+      ip: req.ip,
       path: req.originalUrl,
       method: req.method,
     });
@@ -66,6 +67,7 @@ router.get("/", requireReservationView, asyncHandler(async (req, res) => {
   }
 
   logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+    ip: req.ip,
     path: req.originalUrl,
     method: req.method,
     permission: "reservations:manage,reservations:view:own",
