@@ -94,14 +94,18 @@ async function notifyDiscord(action, actor, detail, recordId, actorUsername) {
     ? `${config.publicSiteUrl}/admin-audit-dashboard.html?event=${recordId}&source=was`
     : `${config.publicSiteUrl}/admin-audit-dashboard.html`;
 
-  // [2026-09-16] 텍스트 URL 대신 눌러볼 수 있는 버튼(Link 스타일 컴포넌트, style:5)으로.
-  // Discord 웹훅도 components를 지원하지만(봇 토큰 불필요, 클릭 시 그냥 URL을 여는 것뿐이라
-  // 상호작용 응답이 필요 없음) 실제 웹훅 채널마다 지원 여부를 여기서 확인할 방법이 없어서,
-  // 거부되면(4xx) 텍스트 링크만으로 즉시 재시도한다 - 예쁜 버튼이 알림 자체를 놓치게 만들면
-  // 안 되므로 알림 전달을 항상 우선한다.
-  const contentWithButton = lines.join("\n");
+  // [버그 수정 2026-09-16] 처음엔 "버튼 요청이 실패하면(!res.ok) 텍스트로 재시도"했는데,
+  // 실제로는 웹훅이 지원 안 하는 components를 조용히 무시하고 content만 200/204로 정상
+  // 처리하는 경우가 있었다(응용프로그램에 연결 안 된 일반 채널 웹훅으로 추정) - res.ok가
+  // true라 재시도가 안 일어나고, 버튼도 안 뜨고 텍스트 링크도 없어서 알림에 링크 자체가
+  // 통째로 사라지는 문제가 실사용 중 발견됨. 그래서 텍스트 링크는 애초에 content 본문에
+  // 항상 포함시키고(components 지원 여부와 무관하게 항상 살아남음), 버튼은 "되면 보너스"로
+  // 추가만 시도한다 - 컴포넌트가 아예 요청 자체를 400으로 거부하는 경우에만 컴포넌트를 뺀
+  // 채로 재시도한다.
+  lines.push(`대시보드 바로가기: ${dashboardLink}`);
+  const content = lines.join("\n");
   const payloadWithButton = {
-    content: contentWithButton,
+    content,
     components: [
       {
         type: 1,
@@ -115,9 +119,8 @@ async function notifyDiscord(action, actor, detail, recordId, actorUsername) {
   try {
     let res = await postToDiscord(webhookUrl, payloadWithButton);
     if (!res.ok) {
-      console.error(`[discord notify error] 버튼 포함 요청 실패(${res.status}) - 텍스트 링크로 재시도`);
-      const fallbackPayload = { content: `${contentWithButton}\n대시보드 바로가기: ${dashboardLink}` };
-      res = await postToDiscord(webhookUrl, fallbackPayload);
+      console.error(`[discord notify error] 버튼 포함 요청 실패(${res.status}) - 컴포넌트 없이 재시도`);
+      res = await postToDiscord(webhookUrl, { content });
       if (!res.ok) {
         console.error(`[discord notify error] 재시도도 실패: ${res.status}`);
       }
