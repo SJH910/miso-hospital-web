@@ -64,7 +64,7 @@ class AuditEngine:
         # 삼킨다(notify_discord 자체도 내부에서 한 번 더 삼킴 - 이중 방어).
         if risk_level == "high":
             try:
-                notify_discord(action, actor=_extract_actor(payload), detail=f"event_id={event_id}")
+                notify_discord(action, actor=_extract_actor(payload), detail=f"event_id={event_id}", event_id=event_id)
             except Exception as e:
                 print(f"[discord notify hook error] {type(e).__name__}: {e}")
 
