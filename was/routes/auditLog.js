@@ -4,7 +4,7 @@ const config = require("../config");
 const requirePermission = require("../middleware/requirePermission");
 const { evaluateSeverity } = require("../audit-severity");
 const { classifyCategory, ANOMALY_ACTIONS, AUTH_ACTIONS } = require("../risk-classification");
-const { logAudit } = require("../audit");
+const { logAuditOnce } = require("../audit");
 const asyncHandler = require("../middleware/asyncHandler");
 // [2026-09-16] 로그인 때 쓰는 관리자 신규 IP/지역 탐지를 감사 대시보드 열람 시점에도
 // 재사용 - isNewAdminLocation은 맵을 읽기만 하는 순수 함수라 로그인 흐름 밖에서 호출해도
@@ -22,16 +22,9 @@ const VALID_CATEGORIES = ["anomaly", "auth", "admin_action"];
 // 열람했는지 지금까지 어디에도 안 남고 있었음 - 내부자가 몰래 들여다봐도 흔적이 없던 공백이라
 // 감사 이벤트로 기록한다. 다만 /summary는 admin-audit-dashboard.js가 10초마다 자동 폴링하므로
 // 매 폴링을 다 기록하면 "노이즈 문제"를 해결하려던 이 기능 자체가 새 노이즈가 됨 - 계정당
-// 일정 시간(5분) 안의 반복 열람은 최초 1건만 남기는 디바운스를 둔다.
-const VIEW_LOG_DEBOUNCE_MS = 5 * 60 * 1000;
-const lastLoggedViewAt = new Map(); // key: `${actorId}:${action}`
-
+// 일정 시간(5분) 안의 반복 열람은 최초 1건만 남기는 디바운스를 둔다(was/audit.js의 logAuditOnce).
 function logViewOnce(actorId, action, detail) {
-  const key = `${actorId}:${action}`;
-  const now = Date.now();
-  if (now - (lastLoggedViewAt.get(key) || 0) < VIEW_LOG_DEBOUNCE_MS) return;
-  lastLoggedViewAt.set(key, now);
-  logAudit(actorId, action, null, null, detail);
+  logAuditOnce(`${actorId}:${action}`, actorId, action, null, null, detail);
 }
 
 // [2026-09-16] "누가 봤는지"뿐 아니라 "정상적인 위치에서 봤는지"까지 구분하기 위함 - 이미

@@ -5,6 +5,7 @@ const { verifyCsrfToken } = require("../middleware/csrf");
 const requirePermission = require("../middleware/requirePermission");
 const { hasPermission } = requirePermission;
 const asyncHandler = require("../middleware/asyncHandler");
+const { logAuditOnce } = require("../audit");
 
 const router = express.Router();
 
@@ -38,6 +39,10 @@ async function attachAnswers(posts) {
 // 없으면(patient, board:read) 본인 문의만 본다.
 router.get("/", asyncHandler(async (req, res) => {
   if (!req.session.patientId) {
+    logAuditOnce(`no_session:${req.ip}:${req.path}`, null, "admin_path_access_no_session", null, null, {
+      path: req.originalUrl,
+      method: req.method,
+    });
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
 
@@ -58,6 +63,12 @@ router.get("/", asyncHandler(async (req, res) => {
     return res.json(await attachAnswers(rows));
   }
 
+  logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+    path: req.originalUrl,
+    method: req.method,
+    permission: "board:reply,board:read",
+    role: req.session.role,
+  });
   return res.status(403).json({ message: "권한이 없습니다." });
 }));
 
@@ -115,15 +126,31 @@ router.post("/:id/answer", verifyCsrfToken, requirePermission("board:reply"), as
 // board:reply 둘 중 하나면 통과하는 인라인 체크로 대체한다.
 router.get("/:patientId", asyncHandler(async (req, res) => {
   if (!req.session.patientId) {
+    logAuditOnce(`no_session:${req.ip}:${req.path}`, null, "admin_path_access_no_session", null, null, {
+      path: req.originalUrl,
+      method: req.method,
+    });
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
 
   const canReply = await hasPermission(req.session.role, "board:reply");
   const canRead = await hasPermission(req.session.role, "board:read");
   if (!canRead && !canReply) {
+    logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+      path: req.originalUrl,
+      method: req.method,
+      permission: "board:reply,board:read",
+      role: req.session.role,
+    });
     return res.status(403).json({ message: "권한이 없습니다." });
   }
   if (!canReply && Number(req.params.patientId) !== req.session.patientId) {
+    logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+      path: req.originalUrl,
+      method: req.method,
+      reason: "not_owner",
+      role: req.session.role,
+    });
     return res.status(403).json({ message: "접근 권한이 없습니다." });
   }
 

@@ -1,7 +1,7 @@
 const express = require("express");
 const pool = require("../db");
 const { verifyCsrfToken } = require("../middleware/csrf");
-const { logAudit } = require("../audit");
+const { logAudit, logAuditOnce } = require("../audit");
 const { generateTotpSecret, verifyTotpCode, buildOtpAuthUri } = require("../totp-utils");
 const asyncHandler = require("../middleware/asyncHandler");
 
@@ -9,9 +9,19 @@ const router = express.Router();
 
 function requireAdminSession(req, res, next) {
   if (!req.session.patientId) {
+    logAuditOnce(`no_session:${req.ip}:${req.path}`, null, "admin_path_access_no_session", null, null, {
+      path: req.originalUrl,
+      method: req.method,
+    });
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
   if (req.session.role !== "admin") {
+    logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+      path: req.originalUrl,
+      method: req.method,
+      requiredRole: "admin",
+      role: req.session.role,
+    });
     return res.status(403).json({ message: "관리자만 이용할 수 있습니다." });
   }
   next();

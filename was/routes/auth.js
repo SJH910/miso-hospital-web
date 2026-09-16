@@ -284,7 +284,7 @@ router.post("/login", loginLimiter, async (req, res) => {
       req.session.patientId = patient.id;
       req.session.patientName = patient.name;
       req.session.role = patient.role;
-      // [2026-09-16] 관리자 신규 위치 탐지(isNewAdminLocation)는 knownIpsByAdminUsername이
+      // [2026-09-16] 관리자 신규 위치 탐지(isNewAdminLocation)는 admin_known_locations 조회가
       // "username" 문자열을 키로 쓰는데, 지금까지 세션엔 patientId/patientName만 있고 username
       // 자체가 없어서 로그인 이후(예: 감사 대시보드 조회 시점)에는 이 검사를 재사용할 수
       // 없었다. was/routes/auditLog.js가 "지금 이 조회가 admin의 평소 위치에서 온 게 맞는지"
