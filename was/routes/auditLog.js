@@ -3,25 +3,45 @@ const pool = require("../db");
 const config = require("../config");
 const requirePermission = require("../middleware/requirePermission");
 const { evaluateSeverity } = require("../audit-severity");
+const { classifyCategory, ANOMALY_ACTIONS } = require("../risk-classification");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = express.Router();
 
 const VALID_RISK_LEVELS = ["low", "medium", "high"];
+const VALID_CATEGORIES = ["anomaly", "routine"];
 
 // 최신순 페이지네이션. limit은 남용 방지를 위해 100으로 상한.
-// ?risk=high 처럼 위험도로 필터링 가능 - 운영 중 "상 등급만 훑어보기" 같은 용도.
+// ?risk=high 처럼 위험도로, ?category=anomaly|routine처럼 "이상탐지 이벤트인가"로 필터링 가능 -
+// risk_level=low 안에 정상 로그인 성공/실패와 이상탐지 미달 이벤트가 섞여 있어서, 등급과는
+// 별도로 "탐지된 신호만 보기"가 필요해 추가됨 (action 목록 자체는 risk-classification.js가
+// 기준 - 감사로그 기록 시점의 분류와 조회 시점의 필터가 항상 같은 기준을 쓰게 하기 위함).
 router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 100);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
-  const { risk } = req.query;
+  const { risk, category } = req.query;
 
   if (risk && !VALID_RISK_LEVELS.includes(risk)) {
     return res.status(400).json({ message: "risk 값이 올바르지 않습니다 (low/medium/high)." });
   }
+  if (category && !VALID_CATEGORIES.includes(category)) {
+    return res.status(400).json({ message: "category 값이 올바르지 않습니다 (anomaly/routine)." });
+  }
 
-  const whereClause = risk ? "WHERE al.risk_level = ?" : "";
-  const params = risk ? [risk, limit, offset] : [limit, offset];
+  const conditions = [];
+  const params = [];
+  if (risk) {
+    conditions.push("al.risk_level = ?");
+    params.push(risk);
+  }
+  if (category) {
+    // ANOMALY_ACTIONS는 고정된 액션 이름 목록(사용자 입력 아님)이라 그대로 SQL에 넣어도 안전 -
+    // 그래도 파라미터 바인딩으로 통일해 다른 조건들과 같은 패턴을 유지한다.
+    const actions = [...ANOMALY_ACTIONS];
+    conditions.push(`al.action ${category === "anomaly" ? "IN" : "NOT IN"} (${actions.map(() => "?").join(",")})`);
+    params.push(...actions);
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const [rows] = await pool.query(
     `SELECT al.id, al.actor_id, p.username AS actor_username, al.action, al.target_type, al.target_id, al.detail, al.risk_level, al.created_at
@@ -29,9 +49,9 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
      ${whereClause}
      ORDER BY al.created_at DESC
      LIMIT ? OFFSET ?`,
-    params
+    [...params, limit, offset]
   );
-  res.json(rows);
+  res.json(rows.map((r) => ({ ...r, category: classifyCategory(r.action) })));
 }));
 
 // [체크리스트 7번 - 대시보드 2단계] mysql_audit(WAS 자신의 DB)은 여기서 직접 조회하고,
