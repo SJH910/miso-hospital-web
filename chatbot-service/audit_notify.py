@@ -37,10 +37,15 @@ _DEFAULT_LABEL = ("챗봇 프롬프트 인젝션 의심", "챗봇 도구 호출 
 _SEVERITY_EMOJI = {"CRITICAL": "\U0001f534", "HIGH": "\U0001f7e0"}  # 🔴 / 🟠
 
 
-def notify_discord(action: str, actor=None, detail: str = "") -> None:
+def notify_discord(action: str, actor=None, detail: str = "", event_id: str = None) -> None:
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
     if not webhook_url:
         return  # 알림은 부가 기능 - 설정이 없다고 본 서비스(챗봇 응답)를 막으면 안 됨
+
+    # [2026-09-16] was/discord-notify.js와 동일한 이유 - 알림만 보고 대시보드를 직접 찾아
+    # 들어가지 않아도 클릭 한 번으로 확인할 수 있도록 링크를 붙인다. 로컬 개발 기본값은
+    # serve.py 포트(5500), 운영 배포는 PUBLIC_SITE_URL을 실제 도메인으로 지정해야 함.
+    public_site_url = os.getenv("PUBLIC_SITE_URL", "http://localhost:5500").rstrip("/")
 
     key = (action, actor if actor is not None else "-")
     now = time.time()
@@ -61,6 +66,15 @@ def notify_discord(action: str, actor=None, detail: str = "") -> None:
         lines.append(f"행위자(계정 ID): `{actor}`")
     if detail:
         lines.append(f"상세: {detail}")
+    # [2026-09-16 정정] "챗봇 쪽은 구조적으로 안 됨"이라고 판단했던 게 틀렸음 - audit_summary.py의
+    # notable 항목이 이미 record_id(=event_id)를 들고 있고, admin-audit-dashboard.js의 "위험도
+    # 요약" 표(페이지네이션 없음, 항상 최근 20건 전체 렌더링)에서 그대로 찾을 수 있다. source=chatbot
+    # 을 같이 보내야 프론트가 "전체 이력"(WAS 전용, audit_log 테이블) 쪽이 아니라 이 요약 표에서
+    # 찾는다는 걸 구분할 수 있다.
+    dashboard_link = f"{public_site_url}/admin-audit-dashboard.html"
+    if event_id:
+        dashboard_link += f"?event={event_id}&source=chatbot"
+    lines.append(f"대시보드 바로가기: {dashboard_link}")
 
     payload = json.dumps({"content": "\n".join(lines)}).encode("utf-8")
     req = urllib.request.Request(

@@ -32,6 +32,11 @@ module.exports = {
   // (HTTP 로컬 개발 환경에서 secure:true를 걸면 쿠키 자체가 전송되지 않아 개발이 막히므로 플래그로 분리)
   useHttps: process.env.USE_HTTPS === "true",
 
+  // [2026-09-16] Discord 알림(discord-notify.js)에 감사 대시보드 바로가기 링크를 붙이기 위한
+  // 공개 접속 주소. 로컬 개발은 serve.py 기본 포트(5500), 운영 배포는 반드시 PUBLIC_SITE_URL을
+  // 실제 도메인으로 지정해야 알림 링크가 맞게 나간다 (안 붙이면 로컬 주소가 그대로 나가 못 씀).
+  publicSiteUrl: (process.env.PUBLIC_SITE_URL || "http://localhost:5500").replace(/\/$/, ""),
+
   // [챗봇 통합] Python RAG 마이크로서비스 주소. Node는 질문+patient_id만 넘기고 답변만 받아온다.
   chatbotServiceUrl: process.env.CHATBOT_SERVICE_URL || "http://localhost:8000",
 

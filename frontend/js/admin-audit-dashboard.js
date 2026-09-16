@@ -4,7 +4,11 @@
 async function loadUserInfo() {
     const res = await fetch(`${WAS_BASE}/api/me`, { credentials: 'include' });
     if (!res.ok) {
-        window.location.href = 'login.html';
+        // [2026-09-16] Discord 알림 링크(?event=<id> 포함)로 로그인 없이 들어온 경우, 로그인만
+        // 시키고 홈으로 보내버리면 다시 대시보드를 찾아 들어가야 한다 - 현재 위치(쿼리 포함)를
+        // ?redirect=로 실어 보내 로그인 후 원래 보려던 화면(+이벤트)으로 정확히 돌아오게 한다.
+        const here = encodeURIComponent(window.location.pathname.split('/').pop() + window.location.search);
+        window.location.href = `login.html?redirect=${here}`;
         return;
     }
     const me = await res.json();
@@ -92,6 +96,13 @@ function renderNotableTable(tracks) {
 
     notable.forEach((item) => {
         const tr = document.createElement('tr');
+        // Discord 알림 링크(?event=<record_id>&source=<source>)로 들어왔을 때 해당 행을
+        // 찾아 강조하기 위함 - mysql_audit(WAS)/audit_jsonl(챗봇) 두 source가 섞여 있어
+        // record_id만으로는 구분 안 되므로 source까지 같이 심어둔다.
+        if (item.record_id !== undefined && item.record_id !== null) {
+            tr.dataset.id = item.record_id;
+            tr.dataset.source = item.source;
+        }
 
         const sevTd = document.createElement('td');
         const pill = document.createElement('span');
@@ -329,6 +340,7 @@ function renderAuditHistoryTable(rows) {
 
     rows.forEach((row) => {
         const tr = document.createElement('tr');
+        tr.dataset.id = row.id; // Discord 알림 링크(?event=)로 들어왔을 때 해당 행을 찾아 강조하기 위함
 
         const timeTd = document.createElement('td');
         timeTd.className = 'col-date';
@@ -511,8 +523,64 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
 
 const AUTO_REFRESH_INTERVAL_MS = 10000;
 
+function highlightRow(row) {
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('audit-history-highlight');
+    setTimeout(() => row.classList.remove('audit-history-highlight'), 4000);
+}
+
+// [2026-09-16] Discord 알림의 "대시보드 바로가기" 링크(?event=<audit_log.id>&source=was)로
+// 들어왔을 때, 관리자가 100건 넘는 이력 중에서 그 이벤트를 직접 찾아야 하는 문제를 없애기
+// 위함 - 해당 이벤트가 있는 페이지로 자동 이동한 뒤 강조 표시한다. GET /api/audit-log/:id가
+// "필터 없는 기본 정렬 기준으로 몇 번째(rank)인지"를 같이 내려주므로 그걸로 페이지를 계산한다 -
+// 그래서 혹시 필터가 걸려있으면 먼저 초기화한다(그 필터 기준으로는 위치가 안 맞을 수 있어서).
+// mysql_audit(WAS) 전용 - "감사 로그 전체 이력" 표는 이 소스만 담고 있다.
+async function jumpToAuditEvent(eventId) {
+    const res = await fetch(`${WAS_BASE}/api/audit-log/${eventId}`, { credentials: 'include' });
+    if (!res.ok) {
+        showToast('알림에 표시된 이벤트를 찾을 수 없습니다.');
+        return;
+    }
+    const event = await res.json();
+
+    document.getElementById('auditRiskFilter').value = '';
+    document.getElementById('auditCategoryFilter').value = '';
+    document.getElementById('auditFromFilter').value = '';
+    document.getElementById('auditToFilter').value = '';
+    auditHistoryOffset = Math.floor(event.rank / AUDIT_HISTORY_PAGE_SIZE) * AUDIT_HISTORY_PAGE_SIZE;
+
+    await loadAuditHistory();
+    highlightRow(document.querySelector(`#auditHistoryList tr[data-id="${event.id}"]`));
+}
+
+// [2026-09-16 정정] 챗봇 쪽(source=chatbot) 이벤트는 audit_log 테이블에 없어서 위 함수를
+// 못 쓰지만, chatbot-service/audit_summary.py의 notable 항목이 이미 record_id(=event_id)를
+// 들고 있고 admin-audit-dashboard.js의 "위험도 요약" 표(페이지네이션 없이 항상 최근 20건
+// 전체를 렌더링)에서 그대로 찾을 수 있다 - 별도 조회 없이 이미 로드된 DOM에서 찾기만 하면 됨.
+// record_id 체계가 mysql_audit(auto-increment 정수)과 audit_jsonl(문자열 event_id)로 서로
+// 달라 우연히 같은 값이 나올 수 있으므로 source까지 같이 확인한다.
+function jumpToNotableEvent(eventId) {
+    const row = document.querySelector(`#notableList tr[data-id="${eventId}"][data-source="audit_jsonl"]`);
+    if (!row) {
+        showToast('알림에 표시된 이벤트가 위험도 요약(최근 20건) 밖으로 밀려나 찾을 수 없습니다.');
+        return;
+    }
+    highlightRow(row);
+}
+
 (async function init() {
     await loadUserInfo();
     await Promise.all([loadDashboard(), loadAuditHistory()]);
     setInterval(loadDashboard, AUTO_REFRESH_INTERVAL_MS);
+
+    const params = new URLSearchParams(window.location.search);
+    const targetEventId = params.get('event');
+    if (targetEventId) {
+        if (params.get('source') === 'chatbot') {
+            jumpToNotableEvent(targetEventId);
+        } else {
+            jumpToAuditEvent(targetEventId);
+        }
+    }
 })();

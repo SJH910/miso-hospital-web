@@ -137,4 +137,37 @@ router.get("/summary", requirePermission("audit:view"), asyncHandler(async (req,
   });
 }));
 
+// [2026-09-16] Discord 알림 링크(?event=<id>)로 들어왔을 때, 필터/페이지를 몰라도 그 이벤트가
+// 있는 페이지로 자동 이동하기 위한 단일 조회. "/summary"보다 뒤에 둬야 한다 - Express가 경로를
+// 등록 순서대로 매칭해서, 이 "/:id"가 먼저 있으면 "/summary" 요청까지 id="summary"로 먹어버린다.
+// 페이지 위치는 필터 없는 기본 정렬(최신순) 기준의 순번(rank, 0-based)으로 계산 - 이 행보다
+// created_at이 더 최신인 행 개수와 같다. 필터가 걸린 상태로 들어왔다면 이 값이 안 맞을 수 있는데,
+// 알림 직후에는 보통 필터가 비어있는 상태로 열어보는 경우라 이 정도 가정으로 충분하다고 판단.
+router.get("/:id", requirePermission("audit:view"), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ message: "id가 올바르지 않습니다." });
+  }
+
+  const [rows] = await pool.query(
+    `SELECT al.id, al.actor_id, p.username AS actor_username, al.action, al.target_type, al.target_id, al.detail, al.risk_level, al.created_at
+     FROM audit_log al LEFT JOIN patients p ON p.id = al.actor_id
+     WHERE al.id = ?`,
+    [id]
+  );
+  if (rows.length === 0) {
+    return res.status(404).json({ message: "해당 이벤트를 찾을 수 없습니다." });
+  }
+  const row = rows[0];
+
+  // [버그 수정 2026-09-16] RANK는 MySQL 8.0+ 예약어(윈도우 함수)라 별칭으로 그냥 쓰면
+  // 문법 오류(ER_PARSE_ERROR) - rank_count처럼 예약어가 아닌 이름으로 바꿔야 함.
+  const [rankRows] = await pool.query(
+    "SELECT COUNT(*) AS rank_count FROM audit_log WHERE created_at > ?",
+    [row.created_at]
+  );
+
+  res.json({ ...row, category: classifyCategory(row.action), rank: rankRows[0].rank_count });
+}));
+
 module.exports = router;

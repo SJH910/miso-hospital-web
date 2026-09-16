@@ -909,6 +909,16 @@ body.landing-page {
     visibility: hidden;
 }
 
+/* [2026-09-16] Discord 알림 링크로 들어왔을 때 해당 행을 잠깐 눈에 띄게 - 몇 초 뒤
+   admin-audit-dashboard.js가 이 클래스를 다시 떼어내며 원래 배경으로 돌아간다. */
+.audit-history-highlight {
+    animation: audit-history-highlight-flash 2s ease-out;
+}
+@keyframes audit-history-highlight-flash {
+    from { background: #fff3cd; }
+    to { background: transparent; }
+}
+
 .board-table .col-num,
 .board-table .col-date {
     color: var(--text-muted);

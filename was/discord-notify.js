@@ -11,6 +11,8 @@
 // 이 프로젝트가 감수하고 있는 트레이드오프다.
 //
 // 요구사항/동작 명세는 test-discord-notify.js 참고 (TDD로 먼저 작성됨).
+const config = require("./config");
+
 const DEBOUNCE_MS = 5 * 60 * 1000; // 5분
 const recentSent = new Map(); // "action::actor" -> 마지막 발송 시각(ms)
 
@@ -41,7 +43,7 @@ function shouldSend(action, actor, now = Date.now()) {
   return true;
 }
 
-async function notifyDiscord(action, actor, detail) {
+async function notifyDiscord(action, actor, detail, recordId) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return; // 알림은 부가 기능 - 설정 없다고 본 서비스(감사 기록)를 막으면 안 됨
   if (!shouldSend(action, actor)) return;
@@ -56,6 +58,17 @@ async function notifyDiscord(action, actor, detail) {
   ];
   if (actor !== undefined && actor !== null) lines.push(`행위자(계정 ID): \`${actor}\``);
   if (detail) lines.push(`상세: ${detail}`);
+  // [2026-09-16] 알림만 보고 대시보드를 직접 찾아 들어가지 않아도, 클릭 한 번으로 확인할 수
+  // 있도록 감사 대시보드 링크를 붙인다. 로그인 세션이 있어야 조회 가능하므로 세션이 없으면
+  // 로그인 화면으로 갔다가 로그인 후 다시 이 링크로 돌아오게 되어있다(login.js 참고).
+  // recordId(=audit_log.id)가 있으면 ?event=&source=was로 실어보내 admin-audit-dashboard.js가
+  // "감사 로그 전체 이력" 표에서 해당 이벤트가 있는 페이지로 자동 이동 + 강조 표시하도록 한다 -
+  // source=was는 챗봇 쪽(audit_notify.py가 source=chatbot으로 보냄, record_id 체계가 달라
+  // "위험도 요약" 표에서 찾아야 함)과 구분하기 위함. recordId가 없으면 그냥 대시보드 첫 화면으로.
+  const dashboardLink = recordId !== undefined && recordId !== null
+    ? `${config.publicSiteUrl}/admin-audit-dashboard.html?event=${recordId}&source=was`
+    : `${config.publicSiteUrl}/admin-audit-dashboard.html`;
+  lines.push(`대시보드 바로가기: ${dashboardLink}`);
 
   try {
     const res = await fetch(webhookUrl, {
