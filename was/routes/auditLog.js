@@ -39,11 +39,11 @@ function logViewOnce(actorId, action, detail) {
 // 후 실사용 정황) 평범한 admin_action이 아니라 이상탐지(anomaly, high)로 기록한다.
 // req.session.username은 로그인 시점에 심어둔다(auth.js) - 옛 세션(이 변경 전에 로그인한
 // 세션)엔 없을 수 있으니 없으면 그냥 평소 위치로 간주(과탐지보다 미탐지가 안전한 기본값).
-function resolveViewAction(req, routineAction) {
+async function resolveViewAction(req, routineAction) {
   if (
     req.session.role === "admin" &&
     req.session.username &&
-    isNewAdminLocation({ username: req.session.username, ip: req.ip })
+    (await isNewAdminLocation({ username: req.session.username, ip: req.ip }))
   ) {
     return "audit_access_new_location";
   }
@@ -110,7 +110,7 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
 
   logViewOnce(
     req.session.patientId,
-    resolveViewAction(req, "audit_log_viewed"),
+    await resolveViewAction(req, "audit_log_viewed"),
     { risk: risk || null, category: category || null, actor: actorId || null, ip: req.ip }
   );
 
@@ -144,7 +144,7 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
 // 챗봇 서비스가 죽어있어도 WAS 자신의 데이터는 보여줘야 하므로, 그 부분만 실패로 표시하고
 // 요청 전체를 막지 않는다 (이 프로젝트 전반의 "외부 의존성 장애가 핵심 기능을 막으면 안 된다" 원칙).
 router.get("/summary", requirePermission("audit:view"), asyncHandler(async (req, res) => {
-  logViewOnce(req.session.patientId, resolveViewAction(req, "audit_dashboard_viewed"), { ip: req.ip });
+  logViewOnce(req.session.patientId, await resolveViewAction(req, "audit_dashboard_viewed"), { ip: req.ip });
 
   const [rows] = await pool.query(
     "SELECT id, actor_id, action, risk_level, created_at FROM audit_log ORDER BY created_at DESC"

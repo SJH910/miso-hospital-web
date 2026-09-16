@@ -50,10 +50,14 @@ const LONG_INPUT_MAX_LENGTH = 200;
 const ADMIN_FAILURE_THRESHOLD = 3; // 일반 계정(5)보다 낮게
 
 // 실습/과제 규모라 메모리 저장으로 충분 (서버 재시작 시 초기화됨 - 운영 규모라면 Redis 등으로 교체 필요)
+// 단, 관리자 신규 IP/지역("known" 위치) 기록은 db/init.sql의 admin_known_locations 테이블에
+// 영속화한다 - [보안 수정 2026-09-16] 이것만 인메모리였을 때, WAS 재시작(배포마다 발생)마다
+// "known" 기록이 통째로 사라져서 재시작 직후 첫 로그인은 누구든(TOTP 등록 여부 무관) 그냥
+// 통과되는 실제 보안 공백으로 이어짐 - 운영 중 발견(팀원이 재시작 직후 admin으로 TOTP 없이
+// 로그인됨). 반복 실패/빈도 카운터는 원래도 짧은 시간창(5분/1분) 기준이라 재시작으로 잃어도
+// 영향이 적어 그대로 메모리에 둔다.
 const failuresByUsername = new Map(); // username -> [실패 타임스탬프, ...]
 const attemptsByIp = new Map(); // ip -> [시도 타임스탬프, ...]
-const knownIpsByAdminUsername = new Map(); // admin username -> Set(과거에 성공 로그인했던 IP들)
-const knownRegionsByAdminUsername = new Map(); // admin username -> Set(과거에 성공 로그인했던 지역들)
 
 // [보안 수정 2026-09-14] 위 3개 Map은 전부 "계정 username"을 키로 쓰는데, DB 조회(로그인 판단)는
 // MySQL 기본 콜레이션이 대소문자를 구분 안 해서 "admin"/"Admin"/"ADMIN"이 전부 같은 계정으로
@@ -158,45 +162,63 @@ async function detectAbnormalPattern({ username, ip, isFailure, isAdmin }) {
   }
 }
 
-// 로그인을 완성하기 *전에* "이 위치가 새로운가?"만 확인 (맵을 건드리지 않음 - 순수 조회).
-// 관리자가 아직 한 번도 로그인한 적 없으면(맵에 기록 자체가 없으면) "새로움"으로 보지 않는다 -
+// admin_known_locations에서 이 관리자 계정이 아는 IP/지역 전체를 한 번에 가져온다 -
+// isNewAdminLocation/recordAdminLocation 둘 다 "전체를 보고 판단"하는 같은 모양이라 공유.
+async function getKnownAdminLocations(usernameKey) {
+  const [rows] = await pool.query(
+    "SELECT location_type, value FROM admin_known_locations WHERE username = ?",
+    [usernameKey]
+  );
+  const knownIps = new Set(rows.filter((r) => r.location_type === "ip").map((r) => r.value));
+  const knownRegions = new Set(rows.filter((r) => r.location_type === "region").map((r) => r.value));
+  return { knownIps, knownRegions };
+}
+
+// 로그인을 완성하기 *전에* "이 위치가 새로운가?"만 확인 (테이블을 건드리지 않음 - 순수 조회).
+// 관리자가 아직 한 번도 로그인한 적 없으면(기록 자체가 없으면) "새로움"으로 보지 않는다 -
 // 최초 로그인 때부터 인증을 요구하면 계정을 아예 못 쓰게 되므로.
-function isNewAdminLocation({ username, ip }) {
+// [보안 수정 2026-09-16] 예전엔 인메모리 Map이라 WAS 재시작마다 이 기록이 사라졌었다 -
+// admin_known_locations 테이블로 영속화해서 재시작과 무관하게 유지되도록 함(아래 함수들
+// 전체 참고). 로그인 흐름 밖(감사 대시보드 열람 시점, auditLog.js)에서도 재사용한다.
+async function isNewAdminLocation({ username, ip }) {
   const usernameKey = normalizeUsernameKey(username);
-  const knownIps = knownIpsByAdminUsername.get(usernameKey);
-  const isNewIp = knownIps ? !knownIps.has(ip) : false;
+  const { knownIps, knownRegions } = await getKnownAdminLocations(usernameKey);
+  const isNewIp = knownIps.size > 0 ? !knownIps.has(ip) : false;
 
   const region = getRegionForIp(ip);
-  const knownRegions = knownRegionsByAdminUsername.get(usernameKey);
-  const isNewRegion = region && knownRegions ? !knownRegions.has(region) : false;
+  const isNewRegion = region && knownRegions.size > 0 ? !knownRegions.has(region) : false;
 
   return isNewIp || isNewRegion;
 }
 
-// 로그인 성공이 확정된 *후에* 호출: IP/지역을 기록하고, 새로움이 감지되면 감사 로그도 남�다.
+// 로그인 성공이 확정된 *후에* 호출: IP/지역을 기록하고, 새로움이 감지되면 감사 로그도 남긴다.
 // (TOTP 인증까지 통과해서 로그인이 최종 완료된 경우에만 호출 - 여기서 새 위치로 등록해야
 //  다음번 같은 위치 로그인 때는 다시 인증을 요구하지 않는다.)
 async function recordAdminLocation({ username, ip, patientId }) {
   const usernameKey = normalizeUsernameKey(username);
-  const knownIps = knownIpsByAdminUsername.get(usernameKey);
-  if (knownIps && !knownIps.has(ip)) {
+  const { knownIps, knownRegions } = await getKnownAdminLocations(usernameKey);
+
+  if (knownIps.size > 0 && !knownIps.has(ip)) {
     await logAudit(patientId, "login_anomaly_admin_new_ip", "patients", patientId, {
       username, ip, knownIpCount: knownIps.size,
     });
   }
-  if (!knownIps) knownIpsByAdminUsername.set(usernameKey, new Set([ip]));
-  else knownIps.add(ip);
+  await pool.query(
+    "INSERT IGNORE INTO admin_known_locations (username, location_type, value) VALUES (?, 'ip', ?)",
+    [usernameKey, ip]
+  );
 
   const region = getRegionForIp(ip);
   if (region) {
-    const knownRegions = knownRegionsByAdminUsername.get(usernameKey);
-    if (knownRegions && !knownRegions.has(region)) {
+    if (knownRegions.size > 0 && !knownRegions.has(region)) {
       await logAudit(patientId, "login_anomaly_admin_new_location", "patients", patientId, {
         username, ip, region, knownRegionCount: knownRegions.size,
       });
     }
-    if (!knownRegions) knownRegionsByAdminUsername.set(usernameKey, new Set([region]));
-    else knownRegions.add(region);
+    await pool.query(
+      "INSERT IGNORE INTO admin_known_locations (username, location_type, value) VALUES (?, 'region', ?)",
+      [usernameKey, region]
+    );
   }
 }
 
@@ -240,7 +262,7 @@ router.post("/login", loginLimiter, async (req, res) => {
     // [관리자 신규 위치 추가 인증] 비밀번호는 맞았지만, 관리자 계정이 TOTP를 등록해뒀고
     // 지금 로그인이 "처음 보는 IP 또는 지역"이면 인증 코드 없이는 세션을 만들어주지 않는다.
     // TOTP를 등록 안 한 관리자는 이 단계를 건너뛴다 (기존처럼 로그인은 되되, 이상 여부만 감사 로그에 남음).
-    if (isAdmin && patient.totp_secret && isNewAdminLocation({ username, ip: req.ip })) {
+    if (isAdmin && patient.totp_secret && (await isNewAdminLocation({ username, ip: req.ip }))) {
       const { totpCode } = req.body;
       if (!totpCode) {
         return res.status(401).json({

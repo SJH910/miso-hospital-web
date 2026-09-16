@@ -9,6 +9,7 @@ USE vulnapp;
 -- 참조하므로 참조하는 쪽을 먼저 삭제.
 DROP TABLE IF EXISTS chat_messages;
 DROP TABLE IF EXISTS holidays;
+DROP TABLE IF EXISTS admin_known_locations;
 DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS medical_records;
 DROP TABLE IF EXISTS reservations;
@@ -189,6 +190,22 @@ CREATE TABLE audit_log (
     risk_level ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'low',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (actor_id) REFERENCES patients(id)
+);
+
+-- [2026-09-16] 관리자 신규 IP/지역 로그인 탐지(was/routes/auth.js의 isNewAdminLocation)가
+-- 지금까지 인메모리 Map으로만 "known" IP/지역을 기억해서, WAS 프로세스가 재시작될 때마다
+-- (배포마다 자주 발생) 그 기록이 통째로 사라졌다 - 재시작 직후엔 "아직 아무도 로그인한 적
+-- 없음"으로 취급되어, TOTP를 등록해둔 admin이어도 누구든 재시작 후 첫 로그인은 TOTP 없이
+-- 통과되는 실제 보안 공백으로 이어졌음(운영 중 발견). DB에 영속화해 재시작과 무관하게 유지한다.
+-- location_type+value로 IP/지역을 한 테이블에 같이 두는 이유는 "이 관리자 계정이 알고 있는
+-- 위치 전체"라는 같은 개념이라 조회/삭제 로직을 하나로 통일하기 위함.
+CREATE TABLE admin_known_locations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,        -- normalizeUsernameKey()로 소문자 정규화된 값 (DB 콜레이션과 일치)
+    location_type ENUM('ip', 'region') NOT NULL,
+    value VARCHAR(100) NOT NULL,          -- location_type='ip'면 IP 문자열, 'region'이면 "국가-지역코드"(예: KR-11)
+    first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_admin_location (username, location_type, value)
 );
 
 -- 관리자가 admin.html에서 스캔한 문서(OCR 결과)를 환자와 연결해 저장하는 테이블.
