@@ -44,10 +44,12 @@ function formatDateTime(isoString) {
 // 보여주면 null 값까지 다 나열돼서 보안 관제 화면치고 지저분함 - null인 키는 걸러내고
 // "key: value" 형태로 사람이 읽기 편하게 재조립한다. detail 자체가 없거나 값이 다 null이면
 // 보여줄 게 없다는 뜻이라 '-'로 표시.
-function formatDetail(detail) {
+// [2026-09-16] ip/path는 이제 표에 전용 컬럼(IP/경로)이 따로 있으므로, "상세" 문자열에
+// 또 나오면 같은 정보가 두 번 보여 지저분해진다 - excludeKeys로 걸러낸다.
+function formatDetail(detail, excludeKeys = []) {
     if (!detail || typeof detail !== 'object') return '-';
     const parts = Object.entries(detail)
-        .filter(([, value]) => value !== null && value !== undefined)
+        .filter(([key, value]) => value !== null && value !== undefined && !excludeKeys.includes(key))
         .map(([key, value]) => `${key}: ${value}`);
     return parts.length > 0 ? parts.join(', ') : '-';
 }
@@ -402,10 +404,20 @@ function renderAuditHistoryTable(rows) {
         const targetTd = document.createElement('td');
         targetTd.textContent = row.target_type ? `${row.target_type} #${row.target_id ?? '-'}` : '-';
 
-        const detailTd = document.createElement('td');
-        detailTd.textContent = formatDetail(row.detail);
+        // [2026-09-16] IP/경로를 "상세" 안에 묻어두지 않고 전용 컬럼으로 분리 - 지금까지는
+        // 값이 있어도 다른 항목들과 섞인 긴 문자열 안에서 찾아야 했음(체크리스트: IP 주소/
+        // 요청 경로 표시). ip/path는 로그인 계열 등 거의 모든 이벤트가 이제 채워 넣지만,
+        // 개념상 없을 수 있는 이벤트도 있어(예: account_role_change의 from/to는 IP 무관) '-'로 표시.
+        const ipTd = document.createElement('td');
+        ipTd.textContent = row.detail?.ip ?? '-';
 
-        tr.append(timeTd, sevTd, actorTd, actionTd, targetTd, detailTd);
+        const pathTd = document.createElement('td');
+        pathTd.textContent = row.detail?.path ?? '-';
+
+        const detailTd = document.createElement('td');
+        detailTd.textContent = formatDetail(row.detail, ['ip', 'path']);
+
+        tr.append(timeTd, sevTd, actorTd, actionTd, targetTd, ipTd, pathTd, detailTd);
         tbody.appendChild(tr);
     });
 
@@ -419,7 +431,7 @@ function renderAuditHistoryTable(rows) {
             const filler = document.createElement('tr');
             filler.className = 'audit-history-filler-row';
             const td = document.createElement('td');
-            td.colSpan = 6;
+            td.colSpan = 8;
             td.innerHTML = '&nbsp;';
             filler.appendChild(td);
             tbody.appendChild(filler);
