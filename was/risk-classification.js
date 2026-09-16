@@ -73,8 +73,24 @@ const ANOMALY_ACTIONS = new Set([
   "oversized_request_payload",
 ]);
 
+// [2026-09-16] "이상탐지 아님"(routine) 하나로 뭉쳐두니, 로그인/TOTP 같은 인증 이벤트와
+// "관리자가 어떤 기능을 실제로 썼는지"(계정 관리, 감사 로그 열람, 진료기록 조회 등 - 앞으로
+// 늘어날 예정)가 같이 섞여서 "관리자 기능 사용 이력만" 따로 보고 싶어도 방법이 없었음
+// (로그인 성공/실패가 반복 기록되며 그 안의 관리자 행동 기록을 묻어버림). auth는 그 자체로
+// 위험도 없는 "로그인 상태 변화" 이벤트만 명시적으로 나열하고, 그 외 나머지(이상탐지도 아니고
+// 인증도 아닌 모든 것)는 전부 admin_action으로 취급 - 새 관리자 기능 로그가 추가돼도 이
+// 목록에 매번 추가할 필요 없이 자동으로 admin_action으로 분류된다(안전측 기본값).
+const AUTH_ACTIONS = new Set([
+  "login_success",
+  "login_fail",
+  "totp_verify_success",
+  "totp_enrolled",
+]);
+
 function classifyCategory(action) {
-  return ANOMALY_ACTIONS.has(action) ? "anomaly" : "routine";
+  if (ANOMALY_ACTIONS.has(action)) return "anomaly";
+  if (AUTH_ACTIONS.has(action)) return "auth";
+  return "admin_action";
 }
 
 // 챗봇 쪽 masking.py의 이메일 마스킹 규칙(로컬파트 앞 3글자만 노출, 나머지 '*')과 동일한 방식을
@@ -107,4 +123,5 @@ module.exports = {
   RISK_LEVELS,
   DEFAULT_RISK_LEVEL,
   ANOMALY_ACTIONS,
+  AUTH_ACTIONS,
 };

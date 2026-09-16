@@ -33,7 +33,19 @@ function formatDateTime(isoString) {
     const d = new Date(isoString);
     if (Number.isNaN(d.getTime())) return String(isoString);
     const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// [2026-09-16] "상세" 컬럼에 원본 JSON 문자열({"risk":null,"category":null,...})을 그대로
+// 보여주면 null 값까지 다 나열돼서 보안 관제 화면치고 지저분함 - null인 키는 걸러내고
+// "key: value" 형태로 사람이 읽기 편하게 재조립한다. detail 자체가 없거나 값이 다 null이면
+// 보여줄 게 없다는 뜻이라 '-'로 표시.
+function formatDetail(detail) {
+    if (!detail || typeof detail !== 'object') return '-';
+    const parts = Object.entries(detail)
+        .filter(([, value]) => value !== null && value !== undefined)
+        .map(([key, value]) => `${key}: ${value}`);
+    return parts.length > 0 ? parts.join(', ') : '-';
 }
 
 // [XSS 방지] 서버 값을 조립할 때 innerHTML 대신 DOM API + textContent만 사용.
@@ -375,7 +387,7 @@ function renderAuditHistoryTable(rows) {
         targetTd.textContent = row.target_type ? `${row.target_type} #${row.target_id ?? '-'}` : '-';
 
         const detailTd = document.createElement('td');
-        detailTd.textContent = row.detail ? JSON.stringify(row.detail) : '-';
+        detailTd.textContent = formatDetail(row.detail);
 
         tr.append(timeTd, sevTd, actorTd, actionTd, targetTd, detailTd);
         tbody.appendChild(tr);
@@ -410,9 +422,33 @@ function renderAuditHistoryPagination() {
     }));
 }
 
+// [2026-09-16] "관리자 A가 최근에 뭘 했는지" 보려면 계정으로도 좁힐 수 있어야 함 - 계정
+// 목록은 이미 있는 GET /api/accounts(accounts:manage 권한, admin 전용)를 그대로 재사용하고
+// role이 admin인 것만 걸러 드롭다운을 채운다(요청: "관리자만 넣어서"). 새 엔드포인트를 안
+// 만들어도 되고, patient 수백 명이 섞여 드롭다운이 무의미해지는 것도 방지된다.
+async function loadAdminAccountOptions() {
+    const select = document.getElementById('auditActorFilter');
+    try {
+        const res = await fetch(`${WAS_BASE}/api/accounts`, { credentials: 'include' });
+        if (!res.ok) return; // 실패해도 "전체 계정" 옵션만으로 나머지 필터는 정상 동작해야 함
+        const accounts = await res.json();
+        accounts
+            .filter((account) => account.role === 'admin')
+            .forEach((account) => {
+                const option = document.createElement('option');
+                option.value = account.id;
+                option.textContent = `${account.username} (${account.name})`;
+                select.appendChild(option);
+            });
+    } catch (err) {
+        console.error('[admin account options] 조회 실패:', err.message);
+    }
+}
+
 async function loadAuditHistory() {
     const risk = document.getElementById('auditRiskFilter').value;
     const category = document.getElementById('auditCategoryFilter').value;
+    const actor = document.getElementById('auditActorFilter').value;
     // datetime-local의 value는 초 단위까지 포함된 지역시각 문자열(예: "2026-09-15T17:03:05") -
     // new Date()가 브라우저/서버(같은 시스템 타임존 가정) 양쪽에서 동일하게 지역시각으로
     // 해석하므로 타임존 변환 없이 그대로 보낸다.
@@ -421,6 +457,7 @@ async function loadAuditHistory() {
     const params = new URLSearchParams({ limit: AUDIT_HISTORY_PAGE_SIZE, offset: auditHistoryOffset });
     if (risk) params.set('risk', risk);
     if (category) params.set('category', category);
+    if (actor) params.set('actor', actor);
     if (from) params.set('from', from);
     if (to) params.set('to', to);
 
@@ -445,6 +482,11 @@ document.getElementById('auditCategoryFilter').addEventListener('change', () => 
     loadAuditHistory();
 });
 
+document.getElementById('auditActorFilter').addEventListener('change', () => {
+    auditHistoryOffset = 0;
+    loadAuditHistory();
+});
+
 document.getElementById('auditFromFilter').addEventListener('change', () => {
     auditHistoryOffset = 0;
     loadAuditHistory();
@@ -458,6 +500,13 @@ document.getElementById('auditToFilter').addEventListener('change', () => {
 document.getElementById('auditTimeFilterClear').addEventListener('click', () => {
     document.getElementById('auditFromFilter').value = '';
     document.getElementById('auditToFilter').value = '';
+    auditHistoryOffset = 0;
+    loadAuditHistory();
+});
+
+// 드롭다운/날짜는 change 시 이미 자동 조회되지만(위 리스너들), 명시적으로 "조회"를
+// 눌러 확인하고 싶은 사용자를 위한 버튼 - 같은 loadAuditHistory()를 그냥 다시 부른다.
+document.getElementById('auditSearchButton').addEventListener('click', () => {
     auditHistoryOffset = 0;
     loadAuditHistory();
 });
@@ -504,6 +553,6 @@ const AUTO_REFRESH_INTERVAL_MS = 10000;
 
 (async function init() {
     await loadUserInfo();
-    await Promise.all([loadDashboard(), loadAuditHistory()]);
+    await Promise.all([loadDashboard(), loadAuditHistory(), loadAdminAccountOptions()]);
     setInterval(loadDashboard, AUTO_REFRESH_INTERVAL_MS);
 })();
