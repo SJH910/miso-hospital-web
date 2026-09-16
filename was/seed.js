@@ -14,6 +14,13 @@ const DUMMY_PATIENTS = [
   { username: "staff1", password: "staff1234", name: "박원무", rrn: "880101-1111111", role: "staff" },
   // 문서 스캔(OCR) 기능은 이 계정(role='admin')만 사용 가능
   { username: "admin", password: "admin_test_123!", name: "관리자", rrn: "000000-1000000", role: "admin" },
+  // [2026-09-16] 관리자 신규 IP/지역 탐지(was/routes/auth.js의 knownIpsByAdminUsername)가
+  // "아이디" 단위로 접속 이력을 추적하다 보니, admin 계정 하나를 여러 팀원이 서로 다른 IP에서
+  // 같이 쓰면 한 명이 접속할 때마다 다른 팀원들은 새 IP로 인식돼 막히는 문제가 있었음.
+  // 근본 해결은 팀원마다 별도 계정을 두는 것 - 권한은 role='admin'이라 기존 admin과 완전히
+  // 동일(별도 role_permissions 매핑 불필요), 아이디/비밀번호만 다르다.
+  { username: "admin2", password: "NW3qSsIgwG!48", name: "관리자2", rrn: "000000-2000000", role: "admin" },
+  { username: "admin3", password: "jRws3iKbn5#73", name: "관리자3", rrn: "000000-3000000", role: "admin" },
 ];
 
 const DUMMY_POSTS = [
