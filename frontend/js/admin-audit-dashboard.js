@@ -408,8 +408,36 @@ function renderAuditHistoryTable(rows) {
         // 값이 있어도 다른 항목들과 섞인 긴 문자열 안에서 찾아야 했음(체크리스트: IP 주소/
         // 요청 경로 표시). ip/path는 로그인 계열 등 거의 모든 이벤트가 이제 채워 넣지만,
         // 개념상 없을 수 있는 이벤트도 있어(예: account_role_change의 from/to는 IP 무관) '-'로 표시.
+        // [2026-09-16] 이벤트를 확인한 자리에서 바로 조치까지 이어지도록(INCIDENT_RESPONSE.md
+        // 3번 절차의 "확인→조치"를 한 화면 안에서 연결) IP 옆에 차단 버튼을 같이 둔다. 글자가
+        // 세로로 쌓이지 않도록 white-space:nowrap을 명시하고, 표 안에 들어가는 버튼이라 크기는
+        // 작게(.btn-action 기본 88px/13px 대신 padding만 최소로) 줄인다. 실제 차단 등록/해제는
+        // 관리 페이지에서만 하도록 해서(권한 체크가 페이지 진입 시 한 번만 필요) 여기서 API를
+        // 직접 부르지 않고 IP를 미리 채운 채로 이동만 시킨다.
+        const ip = row.detail?.ip;
         const ipTd = document.createElement('td');
-        ipTd.textContent = row.detail?.ip ?? '-';
+        ipTd.style.whiteSpace = 'nowrap';
+        if (ip) {
+            const ipText = document.createElement('span');
+            ipText.textContent = ip;
+
+            const blockButton = document.createElement('button');
+            blockButton.type = 'button';
+            blockButton.className = 'btn-action btn-action--cancel';
+            blockButton.style.width = 'auto';
+            blockButton.style.padding = '1px 8px';
+            blockButton.style.fontSize = '11px';
+            blockButton.style.whiteSpace = 'nowrap';
+            blockButton.style.marginLeft = '6px';
+            blockButton.textContent = '차단';
+            blockButton.addEventListener('click', () => {
+                window.location.href = `admin-ip-blocklist.html?ip=${encodeURIComponent(ip)}`;
+            });
+
+            ipTd.append(ipText, blockButton);
+        } else {
+            ipTd.textContent = '-';
+        }
 
         const pathTd = document.createElement('td');
         pathTd.textContent = row.detail?.path ?? '-';

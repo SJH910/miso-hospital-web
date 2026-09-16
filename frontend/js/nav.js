@@ -21,6 +21,7 @@ const ADMIN_MENU_ITEMS = [
     { href: 'admin-holidays.html', label: '휴진일 관리' },
     { href: 'admin-totp-setup.html', label: '로그인 보안' },
     { href: 'admin-audit-dashboard.html', label: '감사 로그' },
+    { href: 'admin-ip-blocklist.html', label: 'IP 차단 관리' },
 ];
 
 // [버그 수정 2026-09-16] 로그인 안 된 상태로 보호된 페이지(예: reservation.html)에 들어가면

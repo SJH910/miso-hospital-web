@@ -10,6 +10,7 @@ USE vulnapp;
 DROP TABLE IF EXISTS chat_messages;
 DROP TABLE IF EXISTS holidays;
 DROP TABLE IF EXISTS admin_known_locations;
+DROP TABLE IF EXISTS ip_blocklist;
 DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS medical_records;
 DROP TABLE IF EXISTS reservations;
@@ -77,7 +78,8 @@ INSERT INTO permissions (name) VALUES
     ('records:view:full'),
     ('records:write'),
     ('audit:view'),
-    ('holidays:manage');
+    ('holidays:manage'),
+    ('security:manage');
 
 -- admin: 문서 스캔(OCR)·계정 관리·예약 관리·문의 답변·환자 등록·진료기록 전체·감사 로그.
 INSERT INTO role_permissions (role_id, permission_id)
@@ -85,7 +87,7 @@ SELECT r.id, p.id FROM roles r, permissions p
 WHERE r.name = 'admin' AND p.name IN (
     'ocr:scan', 'documents:create', 'documents:view', 'patients:view', 'accounts:manage',
     'reservations:manage', 'board:reply', 'patients:register', 'records:view:full', 'records:write', 'audit:view',
-    'holidays:manage'
+    'holidays:manage', 'security:manage'
 );
 
 -- 게시판(진료문의) 권한은 patient/admin 둘 다 부여 (RBAC-Plan.md "역할별 권한 매핑" 참고).
@@ -206,6 +208,32 @@ CREATE TABLE admin_known_locations (
     value VARCHAR(100) NOT NULL,          -- location_type='ip'면 IP 문자열, 'region'이면 "국가-지역코드"(예: KR-11)
     first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_admin_location (username, location_type, value)
+);
+
+-- [2026-09-16] INCIDENT_RESPONSE.md 3-4번 섹션에 명시돼 있던 공백("IP 차단/블랙리스트
+-- 없음")을 메운다. 설계 질문 5개(문서 참고) 결론:
+--   - 차단 기준: IP만(계정 차단은 이미 accounts.js의 role 변경/비밀번호 재설정으로 대체 가능,
+--     비로그인 상태 접근을 막으려면 애초에 IP 기준이 필수라 IP를 먼저 구현 - 계정 차단이
+--     필요해지면 이 테이블에 새로운 값이 아니라 별도 메커니즘으로 다룬다, 섞으면 "차단 대상이
+--     IP인지 계정인지"를 매 조회마다 분기해야 해서 오히려 복잡해짐).
+--   - 저장 위치: DB 테이블(영구). admin_known_locations와 같은 이유 - 인메모리였다면 재시작마다
+--     차단이 풀려서, 정작 공격이 계속되는 동안 서버 배포 한 번으로 방어가 무력화될 수 있음.
+--   - 자동 차단: 이 테이블 자체는 수동 차단 기능만 다룬다(관리자가 명시적으로 등록). 자동 차단은
+--     오탐 위험 때문에 별도 검토 대상으로 남겨둠(문서 참고) - 나중에 자동 차단을 붙이더라도
+--     "차단 목록"이라는 개념 자체는 이 테이블을 그대로 재사용하면 된다.
+--   - 해제 정책: expires_at을 두어 기간제 차단을 기본으로 하고(NULL이면 영구) 관리자가 직접 삭제도
+--     가능 - 오늘 낮에 확인한 것처럼 같은 공인 IP를 여러 사람이 공유하는 경우(사무실 와이파이 등)
+--     영구 차단이 무고한 사용자까지 막을 위험이 있어, 기본을 "영구"가 아니라 "기간제 + 수동 해제"로 둠.
+--   - 차단 메시지: 이 테이블엔 안 남기고 응답 문구 자체를 코드에서 고정값("일시적으로 이용이
+--     제한되었습니다")으로 - 차단 사유를 노출하면 공격자에게 우회 힌트를 주게 됨.
+CREATE TABLE ip_blocklist (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip VARCHAR(45) NOT NULL UNIQUE,       -- IPv4/IPv6 문자열 그대로 저장(정규화 없음 - req.ip와 직접 비교)
+    reason VARCHAR(255) NULL,             -- 관리자가 남기는 메모 (예: "SQLi 반복 시도, audit_log #123")
+    blocked_by INT NULL,                  -- 차단한 관리자 (patients.id) - 계정 삭제 시에도 이력은 남도록 NULL 허용
+    blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NULL,            -- NULL이면 영구 차단, 아니면 이 시각 이후 자동 해제
+    FOREIGN KEY (blocked_by) REFERENCES patients(id) ON DELETE SET NULL
 );
 
 -- 관리자가 admin.html에서 스캔한 문서(OCR 결과)를 환자와 연결해 저장하는 테이블.

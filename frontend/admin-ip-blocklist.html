@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미소 병원 - IP 차단 관리 (관리자)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="landing-page">
+    <header class="site-header">
+        <a href="index.html" class="brand" style="text-decoration:none;">
+            <span class="brand-mark">+</span>
+            미소병원
+        </a>
+        <nav class="main-nav">
+            <span id="navLinks"></span>
+            <span class="user-chip" id="userInfo"></span>
+            <button type="button" class="btn-logout" id="logoutBtn">로그아웃</button>
+        </nav>
+    </header>
+
+    <div class="page-header">
+        <p class="breadcrumb"><a href="index.html">홈</a> &gt; IP 차단 관리</p>
+        <h1>IP 차단 관리</h1>
+        <p style="color:#6b7785;">감사 로그에서 확인된 공격 IP를 수동으로 차단합니다. 차단된 IP는 모든 API 요청에서 즉시 거부됩니다.</p>
+    </div>
+
+    <div class="page-body">
+        <section class="panel write-section">
+            <h3>IP 차단 등록</h3>
+            <div class="input-group">
+                <label for="blockIp">IP 주소</label>
+                <input type="text" id="blockIp" placeholder="예: 203.0.113.99">
+            </div>
+            <div class="input-group">
+                <label for="blockReason">사유</label>
+                <input type="text" id="blockReason" placeholder="예: 감사 로그 #123 - SQL 인젝션 반복 시도">
+            </div>
+            <div class="input-group">
+                <label for="blockDuration">기간</label>
+                <select id="blockDuration" class="audit-filter-select">
+                    <option value="1h">1시간</option>
+                    <option value="24h" selected>24시간</option>
+                    <option value="7d">7일</option>
+                    <option value="permanent">영구</option>
+                </select>
+            </div>
+            <button type="button" id="addBlockButton" class="btn-primary">차단</button>
+        </section>
+
+        <section class="panel list-section">
+            <h3>차단된 IP 목록</h3>
+            <div style="overflow-x:auto;">
+                <table class="board-table">
+                    <thead>
+                        <tr>
+                            <th>IP</th>
+                            <th>사유</th>
+                            <th>차단한 관리자</th>
+                            <th>차단 시각</th>
+                            <th>만료</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="blockList"></tbody>
+                </table>
+                <p class="empty-state" id="blockListEmpty" hidden>차단된 IP가 없습니다.</p>
+            </div>
+        </section>
+    </div>
+
+    <script src="js/was-config.js"></script>
+    <script src="js/toast.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/admin-ip-blocklist.js"></script>
+</body>
+</html>

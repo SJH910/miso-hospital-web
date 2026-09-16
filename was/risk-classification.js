@@ -47,6 +47,12 @@ const RISK_LEVELS = {
   // [2026-09-16] 로그인은 했지만 권한이 없는 API/리소스에 접근하려다 막힌 경우 - UI 실수일
   // 수도 있어 no_session보다는 낮지만, 권한 상승 시도나 IDOR 탐색일 가능성도 있어 상시 관찰.
   admin_path_access_forbidden: "medium",
+  // [2026-09-16] IP 차단/해제 자체는 관리자의 정상적인 대응 조치라 anomaly는 아니지만,
+  // 보안에 직접 영향을 주는 조작이라 상시 관찰 대상(account_role_change와 같은 급)으로 둔다 -
+  // "누가 언제 어떤 IP를 왜 차단/해제했는지"가 감사 로그에 남아야 오남용(예: 무고한 IP를
+  // 실수로 영구 차단)도 나중에 추적 가능.
+  ip_blocked: "medium",
+  ip_unblocked: "medium",
 
   // 하(LOW) - 정상 흐름이거나, 아직 이상탐지 임계값에 도달하지 않은 단발성 이벤트.
   login_success: "low",
