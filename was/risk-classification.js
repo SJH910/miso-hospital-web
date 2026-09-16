@@ -20,6 +20,13 @@ const RISK_LEVELS = {
   // 않지만 지금까지는 그냥 평범한 login_fail(low)로만 기록되어 공격 시도 자체가 오타와
   // 구분 없이 묻히고 있었음. 성공 여부와 무관하게 "침해 시도가 의심되는 신호"라 high로 분류.
   login_anomaly_sqli_pattern: "high",
+  // [2026-09-16] 감사 대시보드 열람 자체를 low로 고정해뒀더니, 세션이 탈취돼서 낯선 위치에서
+  // 몰래 들여다보는 경우와 관리자 본인이 평소 위치에서 보는 경우가 똑같이 낮은 등급으로
+  // 섞여버렸다 - "누가 봤는지"(행위자)는 있어도 "정상적인 접근인지"는 구분이 안 됨. 로그인 때
+  // 이미 쓰고 있는 신규 IP/지역 탐지(auth.js의 isNewAdminLocation)를 대시보드 조회 시점에도
+  // 재사용해서, 낯선 위치에서의 열람이면 audit_log_viewed/audit_dashboard_viewed 대신 이
+  // 액션으로 기록한다(auditLog.js 참고) - 침입 정황을 admin_action 노이즈에 묻히지 않게 함.
+  audit_access_new_location: "high",
   // [보안 강화 2026-09-14] express.json() 기본 요청 크기 제한(100KB)을 넘는 요청은 body-parser가
   // 라우트 핸들러 진입 전에 막아버려서, 지금까지는 login_anomaly_long_input(아래 medium)조차
   // 기록 안 되고 그냥 500 에러로 끝났음 - "긴 문자열 미탐"의 극단적인 경우. server.js의 에러
@@ -71,6 +78,7 @@ const ANOMALY_ACTIONS = new Set([
   "totp_verify_fail",
   "totp_disabled",
   "oversized_request_payload",
+  "audit_access_new_location",
 ]);
 
 // [2026-09-16] "이상탐지 아님"(routine) 하나로 뭉쳐두니, 로그인/TOTP 같은 인증 이벤트와

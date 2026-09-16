@@ -16,6 +16,7 @@
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 
 _DEBOUNCE_SECONDS = 300  # 5분
@@ -74,22 +75,46 @@ def notify_discord(action: str, actor=None, detail: str = "", event_id: str = No
     dashboard_link = f"{public_site_url}/admin-audit-dashboard.html"
     if event_id:
         dashboard_link += f"?event={event_id}&source=chatbot"
-    lines.append(f"대시보드 바로가기: {dashboard_link}")
 
-    payload = json.dumps({"content": "\n".join(lines)}).encode("utf-8")
-    req = urllib.request.Request(
-        webhook_url,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            # [버그 수정 2026-09-11] 기본 User-Agent(Python-urllib/x.y)를 Discord/Cloudflare가
-            # 403으로 차단함 - 실제 웹훅으로 검증하다 발견. 브라우저처럼 보이는 UA로 우회.
-            "User-Agent": "Mozilla/5.0 (compatible; miso-hospital-audit-bot/1.0)",
-        },
-        method="POST",
-    )
-    try:
+    content = "\n".join(lines)
+
+    def _post(payload: dict) -> None:
+        req = urllib.request.Request(
+            webhook_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                # [버그 수정 2026-09-11] 기본 User-Agent(Python-urllib/x.y)를 Discord/Cloudflare가
+                # 403으로 차단함 - 실제 웹훅으로 검증하다 발견. 브라우저처럼 보이는 UA로 우회.
+                "User-Agent": "Mozilla/5.0 (compatible; miso-hospital-audit-bot/1.0)",
+            },
+            method="POST",
+        )
         urllib.request.urlopen(req, timeout=3)
+
+    # [2026-09-16] was/discord-notify.js와 동일한 이유 - 텍스트 URL 대신 눌러볼 수 있는
+    # 버튼(Link 스타일 컴포넌트, style=5)으로. 실제 웹훅 채널마다 지원 여부를 여기서 확인할
+    # 방법이 없어서, 거부되면(HTTPError) 텍스트 링크만으로 즉시 재시도한다 - 예쁜 버튼 때문에
+    # 알림 자체를 놓치면 안 되므로 알림 전달을 항상 우선한다.
+    payload_with_button = {
+        "content": content,
+        "components": [
+            {
+                "type": 1,
+                "components": [
+                    {"type": 2, "style": 5, "label": "감사 대시보드 열기", "url": dashboard_link},
+                ],
+            }
+        ],
+    }
+    try:
+        _post(payload_with_button)
+    except urllib.error.HTTPError as e:
+        print(f"[discord notify error] 버튼 포함 요청 실패({e.code}) - 텍스트 링크로 재시도")
+        try:
+            _post({"content": f"{content}\n대시보드 바로가기: {dashboard_link}"})
+        except Exception as e2:
+            print(f"[discord notify error] 재시도도 실패: {type(e2).__name__}: {e2}")
     except Exception as e:
         # 알림 실패가 챗봇 응답 자체를 막으면 안 되므로 로그만 남기고 삼킨다.
         print(f"[discord notify error] {type(e).__name__}: {e}")

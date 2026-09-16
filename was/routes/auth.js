@@ -262,6 +262,12 @@ router.post("/login", loginLimiter, async (req, res) => {
       req.session.patientId = patient.id;
       req.session.patientName = patient.name;
       req.session.role = patient.role;
+      // [2026-09-16] 관리자 신규 위치 탐지(isNewAdminLocation)는 knownIpsByAdminUsername이
+      // "username" 문자열을 키로 쓰는데, 지금까지 세션엔 patientId/patientName만 있고 username
+      // 자체가 없어서 로그인 이후(예: 감사 대시보드 조회 시점)에는 이 검사를 재사용할 수
+      // 없었다. was/routes/auditLog.js가 "지금 이 조회가 admin의 평소 위치에서 온 게 맞는지"
+      // 확인하려면 username이 세션에 있어야 한다.
+      req.session.username = patient.username;
       // [보안 강화 #5 CSRF] 로그인 시 CSRF 토큰 발급. 이후 상태 변경 요청(POST 등)마다 이 값을 헤더로 첨부해야 함.
       req.session.csrfToken = crypto.randomBytes(24).toString("hex");
       logAudit(patient.id, "login_success", "patients", patient.id, { username });
@@ -340,5 +346,11 @@ router.post("/logout", (req, res) => {
     res.json({ success: true });
   });
 });
+
+// [2026-09-16] was/routes/auditLog.js가 감사 대시보드 조회 자체도 "관리자의 평소 위치에서
+// 온 게 맞는지" 확인할 수 있도록 재사용 - isNewAdminLocation은 순수 조회 함수(맵을 안 건드림)라
+// 로그인 흐름 밖에서 호출해도 안전하다. router는 함수 객체라 프로퍼티를 붙여도
+// app.use("/api", authRoutes)의 동작에는 영향이 없다.
+router.isNewAdminLocation = isNewAdminLocation;
 
 module.exports = router;

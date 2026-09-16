@@ -41,7 +41,23 @@ async function logAudit(actorId, action, targetType, targetId, detail) {
           : maskedDetail
             ? JSON.stringify(maskedDetail)
             : null;
-      notifyDiscord(action, actorId, notifyDetail, result.insertId).catch((err) => {
+      // [2026-09-16] Discord 메시지가 지금까지 숫자 계정 ID만 보여줘서("행위자: 5") 관리자가
+      // 매번 DB를 뒤져야 누군지 알 수 있었음 - 알림 직전에만 username을 조회해 같이 보여준다.
+      // 조회 자체가 실패해도(예: 탈퇴한 계정) 알림 자체를 막으면 안 되므로 실패는 삼키고
+      // ID만으로 계속 진행한다. high/ALWAYS_NOTIFY 이벤트만 타는 경로라 매 감사 로그 기록마다
+      // 쿼리가 느는 건 아니다.
+      (async () => {
+        let actorUsername = null;
+        if (actorId) {
+          try {
+            const [userRows] = await pool.query("SELECT username FROM patients WHERE id = ?", [actorId]);
+            actorUsername = userRows[0]?.username ?? null;
+          } catch (e) {
+            console.error("[discord notify] actor username 조회 실패", e.message);
+          }
+        }
+        return notifyDiscord(action, actorId, notifyDetail, result.insertId, actorUsername);
+      })().catch((err) => {
         console.error("[discord notify hook error]", err.message);
       });
     }
