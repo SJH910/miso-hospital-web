@@ -4,6 +4,7 @@ const requirePermission = require("../middleware/requirePermission");
 const { hasPermission } = requirePermission;
 const { verifyCsrfToken } = require("../middleware/csrf");
 const asyncHandler = require("../middleware/asyncHandler");
+const { logAuditOnce } = require("../audit");
 
 const router = express.Router();
 
@@ -32,8 +33,13 @@ async function isWithinBusinessHours(date) {
 
 // patient는 본인 예약만, staff/admin(reservations:manage)은 전체 예약을 본다.
 // 두 권한 중 하나라도 있으면 통과시키고, 실제 조회 범위는 권한에 따라 쿼리에서 분기한다.
-async function requireReservationView(req, res, next) {
+function requireReservationView(req, res, next) {
   if (!req.session.patientId) {
+    logAuditOnce(`no_session:${req.ip}:${req.path}`, null, "admin_path_access_no_session", null, null, {
+      ip: req.ip,
+      path: req.originalUrl,
+      method: req.method,
+    });
     return res.status(401).json({ message: "로그인이 필요합니다." });
   }
   next();
@@ -60,6 +66,13 @@ router.get("/", requireReservationView, asyncHandler(async (req, res) => {
     return res.json(rows);
   }
 
+  logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+    ip: req.ip,
+    path: req.originalUrl,
+    method: req.method,
+    permission: "reservations:manage,reservations:view:own",
+    role: req.session.role,
+  });
   return res.status(403).json({ message: "권한이 없습니다." });
 }));
 

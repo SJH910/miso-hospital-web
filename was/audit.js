@@ -78,4 +78,20 @@ async function logAudit(actorId, action, targetType, targetId, detail) {
   }
 }
 
-module.exports = { logAudit };
+// [2026-09-16] 감사 대시보드 열람 기록(자동 폴링)에서 처음 쓰인 "짧은 시간 안 반복은 최초
+// 1건만" 디바운스를, 세션 없음(401)/권한 없음(403) 접근 시도 기록에도 그대로 적용하기 위해
+// 공용 유틸로 뽑았다. requirePermission처럼 rate limit이 없는 라우트를 세션 없이 반복
+// 호출하면 요청마다 INSERT가 쌓여 audit_log가 무한정 불어날 수 있기 때문 - 호출부가 원하는
+// 기준(IP+path, 계정+path, 계정+action 등)으로 dedupeKey만 넘기면 된다.
+const recentlyLoggedAt = new Map(); // dedupeKey -> 마지막 기록 시각(ms)
+const DEFAULT_LOG_DEBOUNCE_MS = 5 * 60 * 1000;
+
+function logAuditOnce(dedupeKey, actorId, action, targetType, targetId, detail, windowMs = DEFAULT_LOG_DEBOUNCE_MS) {
+  const now = Date.now();
+  const last = recentlyLoggedAt.get(dedupeKey);
+  if (last !== undefined && now - last < windowMs) return;
+  recentlyLoggedAt.set(dedupeKey, now);
+  logAudit(actorId, action, targetType, targetId, detail);
+}
+
+module.exports = { logAudit, logAuditOnce, DEFAULT_LOG_DEBOUNCE_MS };

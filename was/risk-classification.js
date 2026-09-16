@@ -33,6 +33,10 @@ const RISK_LEVELS = {
   // 핸들러에서 이 이벤트를 별도로 남긴다. login_anomaly_long_input(200자 초과)보다 훨씬 큰
   // 규모(100KB)라 medium으로 분류 - 같은 성격의 이벤트끼리 등급을 맞춤.
   oversized_request_payload: "medium",
+  // [2026-09-16] 세션 자체가 없는 상태로 권한이 필요한 API를 직접 호출한 시도 - 정상적인
+  // 프론트엔드 흐름에서는 발생하지 않는(로그인 페이지로 리다이렉트되지, API를 직접 찌르지 않음)
+  // 패턴이라 정찰/스캐닝 또는 세션 쿠키 탈취 후 재사용 시도로 본다.
+  admin_path_access_no_session: "high",
 
   // 중(MEDIUM) - 자동화된 공격 패턴일 가능성이 있으나, 특정 고위험 계정으로 한정되지는 않음.
   // 계정 역할 변경은 그 자체는 정상 운영 행위이지만 권한 상승을 동반할 수 있어 상시 관찰 대상으로 분류.
@@ -40,6 +44,9 @@ const RISK_LEVELS = {
   login_anomaly_high_frequency: "medium",
   login_anomaly_long_input: "medium",
   account_role_change: "medium",
+  // [2026-09-16] 로그인은 했지만 권한이 없는 API/리소스에 접근하려다 막힌 경우 - UI 실수일
+  // 수도 있어 no_session보다는 낮지만, 권한 상승 시도나 IDOR 탐색일 가능성도 있어 상시 관찰.
+  admin_path_access_forbidden: "medium",
 
   // 하(LOW) - 정상 흐름이거나, 아직 이상탐지 임계값에 도달하지 않은 단발성 이벤트.
   login_success: "low",
@@ -78,6 +85,8 @@ const ANOMALY_ACTIONS = new Set([
   "totp_verify_fail",
   "totp_disabled",
   "oversized_request_payload",
+  "admin_path_access_no_session",
+  "admin_path_access_forbidden",
   "audit_access_new_location",
 ]);
 

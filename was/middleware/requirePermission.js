@@ -2,6 +2,7 @@
 // 어떤 역할이 어떤 권한을 갖는지는 DB(roles/permissions/role_permissions)가 갖고 있고,
 // 여기서는 그 매핑을 조회해 세션의 role이 요청된 권한을 갖는지만 확인한다.
 const pool = require("../db");
+const { logAuditOnce } = require("../audit");
 
 // role_permissions는 배포 중 거의 바뀌지 않는 참조 데이터이므로 요청마다 조회하지 않고 캐싱한다.
 let permissionsByRole = null;
@@ -34,12 +35,25 @@ async function hasPermission(role, permissionName) {
 function requirePermission(permissionName) {
   return async function (req, res, next) {
     if (!req.session.patientId) {
+      logAuditOnce(`no_session:${req.ip}:${req.path}`, null, "admin_path_access_no_session", null, null, {
+        ip: req.ip,
+        path: req.originalUrl,
+        method: req.method,
+        permission: permissionName,
+      });
       return res.status(401).json({ message: "로그인이 필요합니다." });
     }
 
     try {
       const allowed = await hasPermission(req.session.role, permissionName);
       if (!allowed) {
+        logAuditOnce(`forbidden:${req.session.patientId}:${req.path}`, req.session.patientId, "admin_path_access_forbidden", null, null, {
+          ip: req.ip,
+          path: req.originalUrl,
+          method: req.method,
+          permission: permissionName,
+          role: req.session.role,
+        });
         return res.status(403).json({ message: "권한이 없습니다." });
       }
       next();
