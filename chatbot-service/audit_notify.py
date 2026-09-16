@@ -76,6 +76,11 @@ def notify_discord(action: str, actor=None, detail: str = "", event_id: str = No
     if event_id:
         dashboard_link += f"?event={event_id}&source=chatbot"
 
+    # [버그 수정 2026-09-16] was/discord-notify.js와 동일한 문제 - 웹훅이 지원 안 하는
+    # components를 조용히 무시하고 content만 정상 처리하는 경우가 있어서, "요청 실패 시에만
+    # 텍스트로 재시도"하면 링크 자체가 통째로 사라질 수 있었다(실사용 중 발견). 텍스트
+    # 링크는 항상 content에 넣고, 버튼은 "되면 보너스"로만 추가한다.
+    lines.append(f"대시보드 바로가기: {dashboard_link}")
     content = "\n".join(lines)
 
     def _post(payload: dict) -> None:
@@ -93,9 +98,9 @@ def notify_discord(action: str, actor=None, detail: str = "", event_id: str = No
         urllib.request.urlopen(req, timeout=3)
 
     # [2026-09-16] was/discord-notify.js와 동일한 이유 - 텍스트 URL 대신 눌러볼 수 있는
-    # 버튼(Link 스타일 컴포넌트, style=5)으로. 실제 웹훅 채널마다 지원 여부를 여기서 확인할
-    # 방법이 없어서, 거부되면(HTTPError) 텍스트 링크만으로 즉시 재시도한다 - 예쁜 버튼 때문에
-    # 알림 자체를 놓치면 안 되므로 알림 전달을 항상 우선한다.
+    # 버튼(Link 스타일 컴포넌트, style=5)을 "되면 보너스"로 추가한다. 텍스트 링크는 위에서
+    # 이미 content에 항상 포함시켰으므로, 이 요청이 통째로 거부될 때(HTTPError)만 컴포넌트를
+    # 뺀 채로 재시도한다.
     payload_with_button = {
         "content": content,
         "components": [
@@ -110,9 +115,9 @@ def notify_discord(action: str, actor=None, detail: str = "", event_id: str = No
     try:
         _post(payload_with_button)
     except urllib.error.HTTPError as e:
-        print(f"[discord notify error] 버튼 포함 요청 실패({e.code}) - 텍스트 링크로 재시도")
+        print(f"[discord notify error] 버튼 포함 요청 실패({e.code}) - 컴포넌트 없이 재시도")
         try:
-            _post({"content": f"{content}\n대시보드 바로가기: {dashboard_link}"})
+            _post({"content": content})
         except Exception as e2:
             print(f"[discord notify error] 재시도도 실패: {type(e2).__name__}: {e2}")
     except Exception as e:
