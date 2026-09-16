@@ -127,6 +127,42 @@ const PII_SOURCE_LABELS = {
 // 화면이 건수만 보여주고 버려서, "위험 로그가 마스킹 처리된 것을 확인" 항목을 시연할 방법이
 // 없었음. 원문은 API도 절대 내려주지 않으므로(log_audit_tool.py scan_for_pii 참고)
 // 여기서도 masked_preview(=마스킹 이후 값)만 표시 — 원문 노출 위험 없음.
+//
+// [2026-09-16] finding 하나를 식별하는 키. timestamp만으로는 같은 밀리초에 두 건이 잡히면
+// 충돌할 수 있어 field+masked_preview까지 합쳐 사실상 유일하게 만든다. 아래 renderPiiScanRow의
+// 증분 갱신(새로 생긴 항목만 append)이 "어디까지가 이미 그려진 항목인지" 판단하는 데 쓰인다.
+function findingKey(finding) {
+    return `${finding.timestamp}|${finding.field}|${finding.masked_preview}`;
+}
+
+function appendFindingLi(ul, finding) {
+    const li = document.createElement('li');
+    li.dataset.key = findingKey(finding);
+
+    const time = document.createElement('span');
+    time.className = 'pii-finding__time';
+    time.textContent = formatDateTime(finding.timestamp);
+
+    const field = document.createElement('span');
+    field.className = 'pii-finding__field';
+    field.textContent = finding.field;
+
+    const preview = document.createElement('span');
+    preview.className = 'pii-finding__preview';
+    preview.textContent = finding.masked_preview;
+
+    li.append(time, field, preview);
+
+    if (finding.known_exception) {
+        const badge = document.createElement('span');
+        badge.className = 'pii-finding__badge';
+        badge.textContent = '알려진 예외';
+        li.appendChild(badge);
+    }
+
+    ul.appendChild(li);
+}
+
 function renderPiiFindingList(findings) {
     const details = document.createElement('details');
     details.className = 'pii-finding-list';
@@ -136,66 +172,102 @@ function renderPiiFindingList(findings) {
     details.appendChild(summary);
 
     const ul = document.createElement('ul');
-    findings.forEach((finding) => {
-        const li = document.createElement('li');
-
-        const time = document.createElement('span');
-        time.className = 'pii-finding__time';
-        time.textContent = formatDateTime(finding.timestamp);
-
-        const field = document.createElement('span');
-        field.className = 'pii-finding__field';
-        field.textContent = finding.field;
-
-        const preview = document.createElement('span');
-        preview.className = 'pii-finding__preview';
-        preview.textContent = finding.masked_preview;
-
-        li.append(time, field, preview);
-
-        if (finding.known_exception) {
-            const badge = document.createElement('span');
-            badge.className = 'pii-finding__badge';
-            badge.textContent = '알려진 예외';
-            li.appendChild(badge);
-        }
-
-        ul.appendChild(li);
-    });
+    findings.forEach((finding) => appendFindingLi(ul, finding));
     details.appendChild(ul);
     return details;
 }
 
+// [2026-09-16] 애초에 10초마다 innerHTML=''로 통째로 다시 그리는 게 문제의 근원이었음 - <details>의
+// open 상태뿐 아니라 그 안 <ul>의 스크롤 위치(max-height+overflow-y:auto)까지 매번 초기화됐다.
+// open 여부만 기억해서 복원하는 방식으로 먼저 고쳤더니 열림 상태는 유지됐지만, <ul> 자체가 매번
+// 새 DOM 노드로 교체되다 보니 scrollTop을 코드로 다시 대입해도 타이밍에 따라 브라우저가 이를
+// 반영하지 못하는 경우가 있었음(레이아웃 계산 전 대입 등). 근본 해결은 "웬만하면 기존 DOM 노드를
+// 아예 건드리지 않는 것" - 감사 로그 findings는 과거 기록이 사라지거나 수정되지 않고 뒤에 새
+// 항목만 追加되는 append-only 데이터이므로, 이미 그려진 <li>들은 그대로 두고 새로 생긴 것만
+// 기존 <ul> 끝에 추가한다. 기존 노드를 안 건드리면 브라우저가 scrollTop을 알아서 그대로 유지하므로
+// 수동 복원 자체가 필요 없어진다. 카드/통계 텍스트도 마찬가지로 element를 재사용해 갱신만 한다.
 function renderPiiScanRow(piiScanTrack) {
     const container = document.getElementById('piiScanRow');
-    container.innerHTML = '';
+
+    const existingCards = new Map();
+    container.querySelectorAll('.pii-scan-card').forEach((card) => {
+        if (card.dataset.source) existingCards.set(card.dataset.source, card);
+    });
+
+    const seenSources = new Set();
 
     piiScanTrack.forEach((track) => {
-        const card = document.createElement('div');
-        card.className = 'pii-scan-card';
+        seenSources.add(track.source);
+        let card = existingCards.get(track.source);
 
-        const title = document.createElement('div');
-        title.className = 'pii-scan-card__title';
-        title.textContent = PII_SOURCE_LABELS[track.source] || track.source;
+        if (!card) {
+            card = document.createElement('div');
+            card.className = 'pii-scan-card';
+            card.dataset.source = track.source;
 
-        const stats = document.createElement('div');
-        stats.className = 'pii-scan-card__stats';
+            const title = document.createElement('div');
+            title.className = 'pii-scan-card__title';
+            title.textContent = PII_SOURCE_LABELS[track.source] || track.source;
 
-        const scanned = document.createElement('span');
-        scanned.textContent = `스캔 ${track.scanned}건`;
+            const stats = document.createElement('div');
+            stats.className = 'pii-scan-card__stats';
 
-        const found = document.createElement('span');
-        found.className = track.found > 0 ? 'pii-scan-card__found' : 'pii-scan-card__found pii-scan-card__found--zero';
-        found.textContent = `발견 ${track.found}건`;
+            const scanned = document.createElement('span');
+            scanned.className = 'pii-scan-card__scanned';
 
-        stats.append(scanned, found);
-        card.append(title, stats);
+            const found = document.createElement('span');
+            found.className = 'pii-scan-card__found';
 
-        if (track.findings && track.findings.length > 0) {
-            card.appendChild(renderPiiFindingList(track.findings));
+            stats.append(scanned, found);
+            card.append(title, stats);
+            container.appendChild(card);
         }
 
-        container.appendChild(card);
+        const scanned = card.querySelector('.pii-scan-card__scanned');
+        scanned.textContent = `스캔 ${track.scanned}건`;
+
+        const found = card.querySelector('.pii-scan-card__found');
+        found.textContent = `발견 ${track.found}건`;
+        found.className = track.found > 0 ? 'pii-scan-card__found' : 'pii-scan-card__found pii-scan-card__found--zero';
+
+        if (!track.findings || track.findings.length === 0) {
+            const existingDetails = card.querySelector('details.pii-finding-list');
+            if (existingDetails) existingDetails.remove();
+            return;
+        }
+
+        const existingDetails = card.querySelector('details.pii-finding-list');
+        if (!existingDetails) {
+            card.appendChild(renderPiiFindingList(track.findings));
+            return;
+        }
+
+        const ul = existingDetails.querySelector('ul');
+        const existingKeys = Array.from(ul.querySelectorAll('li')).map((li) => li.dataset.key);
+        const newKeys = track.findings.map(findingKey);
+        const overlapMatches = existingKeys.every((key, i) => key === newKeys[i]);
+
+        if (overlapMatches && newKeys.length >= existingKeys.length) {
+            // 기존 항목은 그대로 두고 뒤에 새로 생긴 것만 추가 - <ul> 노드 자체를 안 건드리므로
+            // 열림/스크롤 상태가 자연히 유지된다.
+            for (let i = existingKeys.length; i < track.findings.length; i++) {
+                appendFindingLi(ul, track.findings[i]);
+            }
+        } else if (!overlapMatches) {
+            // 순서/내용이 어긋난 예외적인 경우(정상 흐름에서는 발생하지 않음)에만 통째로 다시
+            // 그리되, 열려있던 상태만이라도 보존한다.
+            const wasOpen = existingDetails.open;
+            const rebuilt = renderPiiFindingList(track.findings);
+            rebuilt.open = wasOpen;
+            existingDetails.replaceWith(rebuilt);
+            return;
+        }
+
+        existingDetails.querySelector('summary').textContent = `발견 내역 보기 (${track.findings.length}건)`;
+    });
+
+    existingCards.forEach((card, source) => {
+        if (!seenSources.has(source)) card.remove();
     });
 }
 
