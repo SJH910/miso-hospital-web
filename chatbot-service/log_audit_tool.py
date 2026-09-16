@@ -252,6 +252,15 @@ def read_mysql_chat_messages():
 # 판단하므로 mask_pii()가 바뀌어도 이 판정 자체는 깨지지 않는다.
 KNOWN_EXCEPTION_SOURCES = {"mysql_audit"}
 
+# [2026-09-16] chatbot_sqlite/mysql_chat 두 저장소 모두 "원문"에 해당하는 필드(original/
+# response/content)는 애초에 저장 시점에 마스킹을 시도한 적이 없다 - 보호 수단이 마스킹이
+# 아니라 암호화라서, 그 안에서 PII가 "발견"되는 건 버그가 아니라 항상 있을 수 있는 정상
+# 상태다. 반면 masked_text(chatbot_sqlite)는 저장 전에 이미 mask_pii()를 한 번 거친
+# 필드라, 여기서 발견되면 마스킹 로직이 실제로 뭔가를 놓쳤다는 뜻 - 이게 진짜 버그다.
+# 이 구분이 없으면 "발견 건수"가 대부분 정상 원문(raw) 케이스로 채워져서 진짜 마스킹
+# 실패가 그 안에 묻혀버린다.
+PRE_MASKED_FIELD_NAMES = {"masked_text"}
+
 
 def scan_for_pii(records):
     findings = []
@@ -269,6 +278,7 @@ def scan_for_pii(records):
                     "field": field,
                     "masked_preview": masked,
                     "known_exception": record["source"] in KNOWN_EXCEPTION_SOURCES,
+                    "is_masking_failure": field in PRE_MASKED_FIELD_NAMES,
                 })
     return findings
 
@@ -277,7 +287,7 @@ def write_report(findings, output_path):
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["source", "record_id", "timestamp", "actor_id", "field", "masked_preview", "known_exception"],
+            fieldnames=["source", "record_id", "timestamp", "actor_id", "field", "masked_preview", "known_exception", "is_masking_failure"],
         )
         writer.writeheader()
         writer.writerows(findings)

@@ -37,7 +37,19 @@ function formatDateTime(isoString) {
     const d = new Date(isoString);
     if (Number.isNaN(d.getTime())) return String(isoString);
     const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// [2026-09-16] "상세" 컬럼에 원본 JSON 문자열({"risk":null,"category":null,...})을 그대로
+// 보여주면 null 값까지 다 나열돼서 보안 관제 화면치고 지저분함 - null인 키는 걸러내고
+// "key: value" 형태로 사람이 읽기 편하게 재조립한다. detail 자체가 없거나 값이 다 null이면
+// 보여줄 게 없다는 뜻이라 '-'로 표시.
+function formatDetail(detail) {
+    if (!detail || typeof detail !== 'object') return '-';
+    const parts = Object.entries(detail)
+        .filter(([, value]) => value !== null && value !== undefined)
+        .map(([key, value]) => `${key}: ${value}`);
+    return parts.length > 0 ? parts.join(', ') : '-';
 }
 
 // [XSS 방지] 서버 값을 조립할 때 innerHTML 대신 DOM API + textContent만 사용.
@@ -129,9 +141,14 @@ function renderNotableTable(tracks) {
     });
 }
 
-const PII_SOURCE_LABELS = {
-    chatbot_sqlite: '챗봇 대화 로그 (SQLite)',
-    mysql_chat: '진료 예약 챗봇 대화 (MySQL)',
+// chatbot_sqlite(챗봇 서비스 자체 SQLite 로그)와 mysql_chat(WAS의 대화 이력 MySQL 테이블)은
+// 같은 대화(환자 질문/챗봇 응답)를 각자 원문 그대로 한 번씩 더 저장하는 구조라 - 예전엔 이
+// 둘을 별개 카드로 나눠서 보여줬더니 "발견 내역"이 사실상 같은 문장을 두 번 보여주는 것과
+// 다름없었음(2026-09-16, 관리자 확인). 화면에서는 하나로 합치고, finding.source로 어느
+// 저장소인지만 짧은 태그로 표시한다.
+const PII_SOURCE_SHORT_LABELS = {
+    chatbot_sqlite: 'SQLite',
+    mysql_chat: 'MySQL',
 };
 
 // [2026-09-14] 그동안 findings[]는 API 응답에 이미 있었는데(마스킹된 값 = masked_preview)
@@ -140,10 +157,11 @@ const PII_SOURCE_LABELS = {
 // 여기서도 masked_preview(=마스킹 이후 값)만 표시 — 원문 노출 위험 없음.
 //
 // [2026-09-16] finding 하나를 식별하는 키. timestamp만으로는 같은 밀리초에 두 건이 잡히면
-// 충돌할 수 있어 field+masked_preview까지 합쳐 사실상 유일하게 만든다. 아래 renderPiiScanRow의
-// 증분 갱신(새로 생긴 항목만 append)이 "어디까지가 이미 그려진 항목인지" 판단하는 데 쓰인다.
+// 충돌할 수 있어 source+field+masked_preview까지 합쳐 사실상 유일하게 만든다. 아래
+// updatePiiScanCard의 증분 갱신(새로 생긴 항목만 append)이 "어디까지가 이미 그려진 항목인지"
+// 판단하는 데 쓰인다.
 function findingKey(finding) {
-    return `${finding.timestamp}|${finding.field}|${finding.masked_preview}`;
+    return `${finding.source}|${finding.timestamp}|${finding.field}|${finding.masked_preview}`;
 }
 
 function appendFindingLi(ul, finding) {
@@ -154,6 +172,10 @@ function appendFindingLi(ul, finding) {
     time.className = 'pii-finding__time';
     time.textContent = formatDateTime(finding.timestamp);
 
+    const source = document.createElement('span');
+    source.className = 'pii-finding__badge';
+    source.textContent = PII_SOURCE_SHORT_LABELS[finding.source] || finding.source;
+
     const field = document.createElement('span');
     field.className = 'pii-finding__field';
     field.textContent = finding.field;
@@ -162,7 +184,7 @@ function appendFindingLi(ul, finding) {
     preview.className = 'pii-finding__preview';
     preview.textContent = finding.masked_preview;
 
-    li.append(time, field, preview);
+    li.append(time, source, field, preview);
 
     if (finding.known_exception) {
         const badge = document.createElement('span');
@@ -188,97 +210,115 @@ function renderPiiFindingList(findings) {
     return details;
 }
 
-// [2026-09-16] 애초에 10초마다 innerHTML=''로 통째로 다시 그리는 게 문제의 근원이었음 - <details>의
-// open 상태뿐 아니라 그 안 <ul>의 스크롤 위치(max-height+overflow-y:auto)까지 매번 초기화됐다.
-// open 여부만 기억해서 복원하는 방식으로 먼저 고쳤더니 열림 상태는 유지됐지만, <ul> 자체가 매번
-// 새 DOM 노드로 교체되다 보니 scrollTop을 코드로 다시 대입해도 타이밍에 따라 브라우저가 이를
-// 반영하지 못하는 경우가 있었음(레이아웃 계산 전 대입 등). 근본 해결은 "웬만하면 기존 DOM 노드를
-// 아예 건드리지 않는 것" - 감사 로그 findings는 과거 기록이 사라지거나 수정되지 않고 뒤에 새
-// 항목만 追加되는 append-only 데이터이므로, 이미 그려진 <li>들은 그대로 두고 새로 생긴 것만
-// 기존 <ul> 끝에 추가한다. 기존 노드를 안 건드리면 브라우저가 scrollTop을 알아서 그대로 유지하므로
-// 수동 복원 자체가 필요 없어진다. 카드/통계 텍스트도 마찬가지로 element를 재사용해 갱신만 한다.
-function renderPiiScanRow(piiScanTrack) {
-    const container = document.getElementById('piiScanRow');
+// [2026-09-16] 10초마다 innerHTML=''로 통째로 다시 그리면 <details>의 열림 상태뿐 아니라
+// 그 안 <ul>의 스크롤 위치까지 매번 초기화된다(Sunjung Hwang, 175f1ae) - 기존 DOM 노드를
+// 그대로 두고 새로 생긴 <li>만 append하면 브라우저가 scrollTop을 알아서 유지해준다. 원래는
+// track.source(chatbot_sqlite/mysql_chat)별 카드였는데, 두 저장소가 같은 대화를 원문 그대로
+// 중복 저장하는 구조라 발견 내역이 사실상 같은 문장을 두 번 보여주는 것과 다름없어서(관리자
+// 확인, 2026-09-16) "마스킹 실패"/"원문 저장 현황" 두 카드로 재설계했다 - source가 아니라
+// 고정된 cardId로 기존 카드를 찾는다는 점만 다르고, 증분 갱신 로직 자체는 동일하다.
+function updatePiiScanCard(container, cardId, { title, description, tone, found, findings }) {
+    let card = container.querySelector(`.pii-scan-card[data-card-id="${cardId}"]`);
 
-    const existingCards = new Map();
-    container.querySelectorAll('.pii-scan-card').forEach((card) => {
-        if (card.dataset.source) existingCards.set(card.dataset.source, card);
-    });
+    if (!card) {
+        card = document.createElement('div');
+        card.className = 'pii-scan-card';
+        card.dataset.cardId = cardId;
 
-    const seenSources = new Set();
+        const titleEl = document.createElement('div');
+        titleEl.className = 'pii-scan-card__title';
+        titleEl.textContent = title;
 
-    piiScanTrack.forEach((track) => {
-        seenSources.add(track.source);
-        let card = existingCards.get(track.source);
+        const desc = document.createElement('p');
+        desc.style.cssText = 'color:#6b7785; font-size:12.5px; margin:2px 0 10px;';
+        desc.textContent = description;
 
-        if (!card) {
-            card = document.createElement('div');
-            card.className = 'pii-scan-card';
-            card.dataset.source = track.source;
+        const stats = document.createElement('div');
+        stats.className = 'pii-scan-card__stats';
 
-            const title = document.createElement('div');
-            title.className = 'pii-scan-card__title';
-            title.textContent = PII_SOURCE_LABELS[track.source] || track.source;
+        const foundEl = document.createElement('span');
+        foundEl.className = 'pii-scan-card__found';
 
-            const stats = document.createElement('div');
-            stats.className = 'pii-scan-card__stats';
+        stats.appendChild(foundEl);
+        card.append(titleEl, desc, stats);
+        container.appendChild(card);
+    }
 
-            const scanned = document.createElement('span');
-            scanned.className = 'pii-scan-card__scanned';
+    const foundEl = card.querySelector('.pii-scan-card__found');
+    const isBad = tone === 'bad' && found > 0;
+    foundEl.className = isBad ? 'pii-scan-card__found' : 'pii-scan-card__found pii-scan-card__found--zero';
+    foundEl.textContent = `발견 ${found}건`;
 
-            const found = document.createElement('span');
-            found.className = 'pii-scan-card__found';
-
-            stats.append(scanned, found);
-            card.append(title, stats);
-            container.appendChild(card);
-        }
-
-        const scanned = card.querySelector('.pii-scan-card__scanned');
-        scanned.textContent = `스캔 ${track.scanned}건`;
-
-        const found = card.querySelector('.pii-scan-card__found');
-        found.textContent = `발견 ${track.found}건`;
-        found.className = track.found > 0 ? 'pii-scan-card__found' : 'pii-scan-card__found pii-scan-card__found--zero';
-
-        if (!track.findings || track.findings.length === 0) {
-            const existingDetails = card.querySelector('details.pii-finding-list');
-            if (existingDetails) existingDetails.remove();
-            return;
-        }
-
+    if (!findings || findings.length === 0) {
         const existingDetails = card.querySelector('details.pii-finding-list');
-        if (!existingDetails) {
-            card.appendChild(renderPiiFindingList(track.findings));
-            return;
+        if (existingDetails) existingDetails.remove();
+        return;
+    }
+
+    const existingDetails = card.querySelector('details.pii-finding-list');
+    if (!existingDetails) {
+        card.appendChild(renderPiiFindingList(findings));
+        return;
+    }
+
+    const ul = existingDetails.querySelector('ul');
+    const existingKeys = Array.from(ul.querySelectorAll('li')).map((li) => li.dataset.key);
+    const newKeys = findings.map(findingKey);
+    const overlapMatches = existingKeys.every((key, i) => key === newKeys[i]);
+
+    if (overlapMatches && newKeys.length >= existingKeys.length) {
+        // 기존 항목은 그대로 두고 뒤에 새로 생긴 것만 추가 - <ul> 노드 자체를 안 건드리므로
+        // 열림/스크롤 상태가 자연히 유지된다.
+        for (let i = existingKeys.length; i < findings.length; i++) {
+            appendFindingLi(ul, findings[i]);
         }
+    } else if (!overlapMatches) {
+        // 순서/내용이 어긋난 예외적인 경우(정상 흐름에서는 발생하지 않음)에만 통째로 다시
+        // 그리되, 열려있던 상태만이라도 보존한다.
+        const wasOpen = existingDetails.open;
+        const rebuilt = renderPiiFindingList(findings);
+        rebuilt.open = wasOpen;
+        existingDetails.replaceWith(rebuilt);
+        return;
+    }
 
-        const ul = existingDetails.querySelector('ul');
-        const existingKeys = Array.from(ul.querySelectorAll('li')).map((li) => li.dataset.key);
-        const newKeys = track.findings.map(findingKey);
-        const overlapMatches = existingKeys.every((key, i) => key === newKeys[i]);
+    existingDetails.querySelector('summary').textContent = `발견 내역 보기 (${findings.length}건)`;
+}
 
-        if (overlapMatches && newKeys.length >= existingKeys.length) {
-            // 기존 항목은 그대로 두고 뒤에 새로 생긴 것만 추가 - <ul> 노드 자체를 안 건드리므로
-            // 열림/스크롤 상태가 자연히 유지된다.
-            for (let i = existingKeys.length; i < track.findings.length; i++) {
-                appendFindingLi(ul, track.findings[i]);
-            }
-        } else if (!overlapMatches) {
-            // 순서/내용이 어긋난 예외적인 경우(정상 흐름에서는 발생하지 않음)에만 통째로 다시
-            // 그리되, 열려있던 상태만이라도 보존한다.
-            const wasOpen = existingDetails.open;
-            const rebuilt = renderPiiFindingList(track.findings);
-            rebuilt.open = wasOpen;
-            existingDetails.replaceWith(rebuilt);
-            return;
-        }
+// [2026-09-16 재설계] "발견"을 두 종류로 나눠서 보여준다 - masking_failures(masked_text처럼
+// 저장 전에 이미 마스킹됐어야 할 필드에서 발견 = 진짜 마스킹 버그)를 앞에 강조해서 보여주고,
+// raw_storage_findings(original/response/content처럼 애초에 마스킹 대상이 아니고 암호화로만
+// 보호되는 필드에서 발견 = 정상 상태)는 참고용으로 톤을 낮춰 보여준다. 이 구분이 없으면
+// 발견 건수 대부분이 후자로 채워져서 진짜 버그가 그 안에 묻힌다.
+function renderPiiScanRow(piiScan) {
+    const container = document.getElementById('piiScanRow');
+    if (!piiScan) {
+        container.innerHTML = '';
+        return;
+    }
 
-        existingDetails.querySelector('summary').textContent = `발견 내역 보기 (${track.findings.length}건)`;
+    let scannedNote = container.querySelector('.pii-scan-scanned-note');
+    if (!scannedNote) {
+        scannedNote = document.createElement('p');
+        scannedNote.className = 'pii-scan-scanned-note';
+        scannedNote.style.cssText = 'color:#97a1ac; font-size:12.5px; margin:0 0 10px;';
+        container.insertBefore(scannedNote, container.firstChild);
+    }
+    scannedNote.textContent = `SQLite + MySQL 통합 스캔 ${piiScan.scanned}건`;
+
+    updatePiiScanCard(container, 'masking_failures', {
+        title: '마스킹 실패',
+        description: '저장 전 이미 마스킹됐어야 할 텍스트에 PII가 남아있는 경우 — 조치가 필요합니다.',
+        tone: 'bad',
+        found: piiScan.masking_failures.found,
+        findings: piiScan.masking_failures.findings,
     });
-
-    existingCards.forEach((card, source) => {
-        if (!seenSources.has(source)) card.remove();
+    updatePiiScanCard(container, 'raw_storage_findings', {
+        title: '원문 저장 현황',
+        description: '암호화로만 보호되는 원문 저장 필드 — 애초에 마스킹 대상이 아니라 발견돼도 정상입니다.',
+        tone: 'neutral',
+        found: piiScan.raw_storage_findings.found,
+        findings: piiScan.raw_storage_findings.findings,
     });
 }
 
@@ -363,7 +403,7 @@ function renderAuditHistoryTable(rows) {
         targetTd.textContent = row.target_type ? `${row.target_type} #${row.target_id ?? '-'}` : '-';
 
         const detailTd = document.createElement('td');
-        detailTd.textContent = row.detail ? JSON.stringify(row.detail) : '-';
+        detailTd.textContent = formatDetail(row.detail);
 
         tr.append(timeTd, sevTd, actorTd, actionTd, targetTd, detailTd);
         tbody.appendChild(tr);
@@ -431,9 +471,33 @@ function renderAuditHistoryPagination() {
     }));
 }
 
+// [2026-09-16] "관리자 A가 최근에 뭘 했는지" 보려면 계정으로도 좁힐 수 있어야 함 - 계정
+// 목록은 이미 있는 GET /api/accounts(accounts:manage 권한, admin 전용)를 그대로 재사용하고
+// role이 admin인 것만 걸러 드롭다운을 채운다(요청: "관리자만 넣어서"). 새 엔드포인트를 안
+// 만들어도 되고, patient 수백 명이 섞여 드롭다운이 무의미해지는 것도 방지된다.
+async function loadAdminAccountOptions() {
+    const select = document.getElementById('auditActorFilter');
+    try {
+        const res = await fetch(`${WAS_BASE}/api/accounts`, { credentials: 'include' });
+        if (!res.ok) return; // 실패해도 "전체 계정" 옵션만으로 나머지 필터는 정상 동작해야 함
+        const accounts = await res.json();
+        accounts
+            .filter((account) => account.role === 'admin')
+            .forEach((account) => {
+                const option = document.createElement('option');
+                option.value = account.id;
+                option.textContent = `${account.username} (${account.name})`;
+                select.appendChild(option);
+            });
+    } catch (err) {
+        console.error('[admin account options] 조회 실패:', err.message);
+    }
+}
+
 async function loadAuditHistory() {
     const risk = document.getElementById('auditRiskFilter').value;
     const category = document.getElementById('auditCategoryFilter').value;
+    const actor = document.getElementById('auditActorFilter').value;
     // datetime-local의 value는 초 단위까지 포함된 지역시각 문자열(예: "2026-09-15T17:03:05") -
     // new Date()가 브라우저/서버(같은 시스템 타임존 가정) 양쪽에서 동일하게 지역시각으로
     // 해석하므로 타임존 변환 없이 그대로 보낸다.
@@ -442,6 +506,7 @@ async function loadAuditHistory() {
     const params = new URLSearchParams({ limit: AUDIT_HISTORY_PAGE_SIZE, offset: auditHistoryOffset });
     if (risk) params.set('risk', risk);
     if (category) params.set('category', category);
+    if (actor) params.set('actor', actor);
     if (from) params.set('from', from);
     if (to) params.set('to', to);
 
@@ -466,6 +531,11 @@ document.getElementById('auditCategoryFilter').addEventListener('change', () => 
     loadAuditHistory();
 });
 
+document.getElementById('auditActorFilter').addEventListener('change', () => {
+    auditHistoryOffset = 0;
+    loadAuditHistory();
+});
+
 document.getElementById('auditFromFilter').addEventListener('change', () => {
     auditHistoryOffset = 0;
     loadAuditHistory();
@@ -479,6 +549,13 @@ document.getElementById('auditToFilter').addEventListener('change', () => {
 document.getElementById('auditTimeFilterClear').addEventListener('click', () => {
     document.getElementById('auditFromFilter').value = '';
     document.getElementById('auditToFilter').value = '';
+    auditHistoryOffset = 0;
+    loadAuditHistory();
+});
+
+// 드롭다운/날짜는 change 시 이미 자동 조회되지만(위 리스너들), 명시적으로 "조회"를
+// 눌러 확인하고 싶은 사용자를 위한 버튼 - 같은 loadAuditHistory()를 그냥 다시 부른다.
+document.getElementById('auditSearchButton').addEventListener('click', () => {
     auditHistoryOffset = 0;
     loadAuditHistory();
 });
@@ -501,7 +578,7 @@ async function loadDashboard() {
 
     renderKpiRow(data.risk_level_tracks);
     renderNotableTable(data.risk_level_tracks);
-    renderPiiScanRow(data.pii_scan_track);
+    renderPiiScanRow(data.pii_scan);
     renderStaticFindings(data.static_findings);
 
     document.getElementById('generatedAt').textContent = `조회 시각: ${formatDateTime(data.generated_at)}`;
@@ -546,6 +623,7 @@ async function jumpToAuditEvent(eventId) {
 
     document.getElementById('auditRiskFilter').value = '';
     document.getElementById('auditCategoryFilter').value = '';
+    document.getElementById('auditActorFilter').value = '';
     document.getElementById('auditFromFilter').value = '';
     document.getElementById('auditToFilter').value = '';
     auditHistoryOffset = Math.floor(event.rank / AUDIT_HISTORY_PAGE_SIZE) * AUDIT_HISTORY_PAGE_SIZE;
@@ -571,7 +649,7 @@ function jumpToNotableEvent(eventId) {
 
 (async function init() {
     await loadUserInfo();
-    await Promise.all([loadDashboard(), loadAuditHistory()]);
+    await Promise.all([loadDashboard(), loadAuditHistory(), loadAdminAccountOptions()]);
     setInterval(loadDashboard, AUTO_REFRESH_INTERVAL_MS);
 
     const params = new URLSearchParams(window.location.search);

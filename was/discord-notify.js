@@ -29,9 +29,13 @@ const EVENT_LABELS = {
   totp_verify_fail: ["TOTP 인증 실패", "비밀번호 통과 후 2차인증 실패 - 탈취 정황", "HIGH"],
   totp_disabled: ["TOTP 해제", "2차인증 자체를 제거하는 조작", "HIGH"],
   login_anomaly_sqli_pattern: ["SQL 인젝션 시도 탐지", "로그인 입력값에 SQLi 서명 발견 - 쿼리는 파라미터화되어 안전하나 침해 시도 정황", "HIGH"],
+  // [2026-09-16] risk_level은 low(정상 admin 업무)지만 audit.js의 ALWAYS_NOTIFY_ACTIONS에 의해
+  // 별도로 여기까지 오는 액션들 - HIGH/CRITICAL이 아니므로 INFO 등급으로 따로 표시한다.
+  audit_log_viewed: ["감사 로그 이력 조회", "관리자가 감사 로그 대시보드(전체 이력)를 열람함 - 세션 탈취 시 침입자가 조용히 훔쳐볼 수 있는 화면이라 접근 자체를 알림", "INFO"],
+  audit_dashboard_viewed: ["감사 대시보드 열람", "관리자가 감사 로그 대시보드(KPI 요약)를 열람함 - 세션 탈취 시 침입자가 조용히 훔쳐볼 수 있는 화면이라 접근 자체를 알림", "INFO"],
 };
 const DEFAULT_LABEL = ["미분류 위험 이벤트", "was/risk-classification.js에 새로 추가됐지만 아직 한글 라벨이 없는 high 등급 이벤트 - 코드 확인 필요", "HIGH"];
-const SEVERITY_EMOJI = { CRITICAL: "🔴", HIGH: "🟠" };
+const SEVERITY_EMOJI = { CRITICAL: "🔴", HIGH: "🟠", INFO: "🔵" };
 
 function shouldSend(action, actor, now = Date.now()) {
   const key = `${action}::${actor ?? "-"}`;

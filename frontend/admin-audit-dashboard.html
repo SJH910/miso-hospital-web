@@ -58,31 +58,38 @@
         </section>
 
         <section class="panel list-section" style="margin-bottom:24px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:10px;">
-                <h3 style="margin:0;">감사 로그 전체 이력</h3>
-                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                    <select id="auditCategoryFilter" class="audit-filter-select">
+            <h3 style="margin:0 0 22px;">감사 로그 전체 이력</h3>
+            <div style="display:flex; flex-direction:column; gap:14px; margin-bottom:24px; padding:0 3%;">
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:28px;">
+                    <span style="width:64px; font-size:12.5px; font-weight:600; color:#97a1ac; text-transform:uppercase; letter-spacing:.03em; flex:none;">필터</span>
+                    <select id="auditCategoryFilter" class="audit-filter-select" style="width:150px;">
                         <option value="">전체 이벤트</option>
-                        <option value="anomaly">위험 탐지만</option>
-                        <option value="routine">일반 활동만</option>
+                        <option value="anomaly">위험 탐지</option>
+                        <option value="auth">로그인·인증</option>
+                        <option value="admin_action">관리자 기능 사용</option>
                     </select>
-                    <select id="auditRiskFilter" class="audit-filter-select">
+                    <select id="auditRiskFilter" class="audit-filter-select" style="width:150px;">
                         <option value="">전체 등급</option>
                         <option value="high">High</option>
                         <option value="medium">Medium</option>
                         <option value="low">Low</option>
                     </select>
-                    <label style="font-size:13px; color:#6b7785; display:flex; align-items:center; gap:6px;">
-                        시작
-                        <input type="datetime-local" id="auditFromFilter" step="1" class="audit-filter-select">
-                    </label>
-                    <label style="font-size:13px; color:#6b7785; display:flex; align-items:center; gap:6px;">
-                        종료
-                        <input type="datetime-local" id="auditToFilter" step="1" class="audit-filter-select">
-                    </label>
-                    <button type="button" id="auditTimeFilterClear" class="btn-action" style="width:auto; padding:6px 12px; font-size:13px;">시간 필터 초기화</button>
+                    <select id="auditActorFilter" class="audit-filter-select" style="width:150px;">
+                        <option value="">전체 계정</option>
+                    </select>
+                </div>
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:20px 14px;">
+                    <span style="width:64px; font-size:12.5px; font-weight:600; color:#97a1ac; text-transform:uppercase; letter-spacing:.03em; flex:none;">조회 기간</span>
+                    <input type="datetime-local" id="auditFromFilter" step="1" class="audit-filter-select" style="width:190px;">
+                    <span style="color:#97a1ac;">~</span>
+                    <input type="datetime-local" id="auditToFilter" step="1" class="audit-filter-select" style="width:190px;">
+                    <div style="display:flex; align-items:center; gap:16px; margin-left:auto;">
+                        <button type="button" id="auditTimeFilterClear" style="border:none; background:none; color:#6b7785; font-size:13px; font-weight:600; cursor:pointer; padding:6px 4px; display:flex; align-items:center; gap:4px;">↻ 초기화</button>
+                        <button type="button" id="auditSearchButton" class="btn-action" style="width:auto; padding:8px 20px; background:var(--navy); color:#fff;">조회</button>
+                    </div>
                 </div>
             </div>
+            <hr style="border:none; border-top:1px solid #e7ecf0; margin:0 0 12px;">
             <div class="audit-history-table-wrap">
                 <table class="board-table">
                     <thead>
@@ -104,7 +111,7 @@
 
         <section class="panel" style="margin-bottom:24px;">
             <h3>대화 원문 PII 스캔 현황</h3>
-            <p style="color:#6b7785; font-size:13px; margin:0 0 16px;">이 두 저장소는 위험도(상/중/하)를 매기지 않습니다 — 마스킹이 빠진 개인정보가 남아있는지만 스캔합니다.</p>
+            <p style="color:#6b7785; font-size:13px; margin:0 0 16px;">챗봇 대화 원문 저장소(SQLite+MySQL)를 통합 스캔합니다 — 위험도(상/중/하)는 매기지 않습니다.</p>
             <div class="pii-scan-row" id="piiScanRow"></div>
         </section>
 

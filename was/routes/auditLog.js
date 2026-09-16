@@ -3,13 +3,32 @@ const pool = require("../db");
 const config = require("../config");
 const requirePermission = require("../middleware/requirePermission");
 const { evaluateSeverity } = require("../audit-severity");
-const { classifyCategory, ANOMALY_ACTIONS } = require("../risk-classification");
+const { classifyCategory, ANOMALY_ACTIONS, AUTH_ACTIONS } = require("../risk-classification");
+const { logAudit } = require("../audit");
 const asyncHandler = require("../middleware/asyncHandler");
 
 const router = express.Router();
 
 const VALID_RISK_LEVELS = ["low", "medium", "high"];
-const VALID_CATEGORIES = ["anomaly", "routine"];
+// [2026-09-16] "routine"(이상탐지 아님) 하나였던 걸 auth/admin_action으로 더 세분화 -
+// 로그인 노이즈에 관리자 기능 사용 기록이 묻히는 문제 해결(risk-classification.js 참고).
+const VALID_CATEGORIES = ["anomaly", "auth", "admin_action"];
+
+// [2026-09-16] 이 대시보드(마스킹된 PII 미리보기·위험 이벤트가 담긴 화면)를 관리자가 언제
+// 열람했는지 지금까지 어디에도 안 남고 있었음 - 내부자가 몰래 들여다봐도 흔적이 없던 공백이라
+// 감사 이벤트로 기록한다. 다만 /summary는 admin-audit-dashboard.js가 10초마다 자동 폴링하므로
+// 매 폴링을 다 기록하면 "노이즈 문제"를 해결하려던 이 기능 자체가 새 노이즈가 됨 - 계정당
+// 일정 시간(5분) 안의 반복 열람은 최초 1건만 남기는 디바운스를 둔다.
+const VIEW_LOG_DEBOUNCE_MS = 5 * 60 * 1000;
+const lastLoggedViewAt = new Map(); // key: `${actorId}:${action}`
+
+function logViewOnce(actorId, action, detail) {
+  const key = `${actorId}:${action}`;
+  const now = Date.now();
+  if (now - (lastLoggedViewAt.get(key) || 0) < VIEW_LOG_DEBOUNCE_MS) return;
+  lastLoggedViewAt.set(key, now);
+  logAudit(actorId, action, null, null, detail);
+}
 
 // 최신순 페이지네이션. limit은 남용 방지를 위해 100으로 상한.
 // ?risk=high 처럼 위험도로, ?category=anomaly|routine처럼 "이상탐지 이벤트인가"로 필터링 가능 -
@@ -19,18 +38,22 @@ const VALID_CATEGORIES = ["anomaly", "routine"];
 router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 100);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
-  const { risk, category, from, to } = req.query;
+  const { risk, category, from, to, actor } = req.query;
 
   if (risk && !VALID_RISK_LEVELS.includes(risk)) {
     return res.status(400).json({ message: "risk 값이 올바르지 않습니다 (low/medium/high)." });
   }
   if (category && !VALID_CATEGORIES.includes(category)) {
-    return res.status(400).json({ message: "category 값이 올바르지 않습니다 (anomaly/routine)." });
+    return res.status(400).json({ message: "category 값이 올바르지 않습니다 (anomaly/auth/admin_action)." });
   }
   const fromDate = from ? new Date(from) : null;
   const toDate = to ? new Date(to) : null;
   if ((from && Number.isNaN(fromDate.getTime())) || (to && Number.isNaN(toDate.getTime()))) {
     return res.status(400).json({ message: "from/to는 올바른 날짜 형식이어야 합니다." });
+  }
+  const actorId = actor ? Number(actor) : null;
+  if (actor && (!Number.isInteger(actorId) || actorId <= 0)) {
+    return res.status(400).json({ message: "actor 값이 올바르지 않습니다." });
   }
 
   const conditions = [];
@@ -40,11 +63,18 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
     params.push(risk);
   }
   if (category) {
-    // ANOMALY_ACTIONS는 고정된 액션 이름 목록(사용자 입력 아님)이라 그대로 SQL에 넣어도 안전 -
-    // 그래도 파라미터 바인딩으로 통일해 다른 조건들과 같은 패턴을 유지한다.
-    const actions = [...ANOMALY_ACTIONS];
-    conditions.push(`al.action ${category === "anomaly" ? "IN" : "NOT IN"} (${actions.map(() => "?").join(",")})`);
+    // ANOMALY_ACTIONS/AUTH_ACTIONS는 고정된 액션 이름 목록(사용자 입력 아님)이라 그대로 SQL에
+    // 넣어도 안전 - 그래도 파라미터 바인딩으로 통일해 다른 조건들과 같은 패턴을 유지한다.
+    // admin_action은 "이상탐지도 인증도 아닌 나머지 전부"라 두 목록을 합쳐 NOT IN으로 뺀다 -
+    // 새 관리자 기능 로그가 추가돼도 이 목록을 매번 안 고쳐도 자동으로 admin_action이 된다.
+    const actions =
+      category === "anomaly" ? [...ANOMALY_ACTIONS] : category === "auth" ? [...AUTH_ACTIONS] : [...ANOMALY_ACTIONS, ...AUTH_ACTIONS];
+    conditions.push(`al.action ${category === "admin_action" ? "NOT IN" : "IN"} (${actions.map(() => "?").join(",")})`);
     params.push(...actions);
+  }
+  if (actorId) {
+    conditions.push("al.actor_id = ?");
+    params.push(actorId);
   }
   // 특정 시:분:초 구간만 찾고 싶을 때(예: "17시 3분대에 뭐가 있었나") 쓰는 필터 - 프론트가
   // <input type="datetime-local" step="1">로 초 단위까지 지정해 보내면 그대로 반영된다.
@@ -57,6 +87,8 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
     params.push(toDate);
   }
   const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  logViewOnce(req.session.patientId, "audit_log_viewed", { risk: risk || null, category: category || null, actor: actorId || null });
 
   // [2026-09-16] 프론트에서 숫자 페이지 버튼(예: 1~10페이지 한 번에 표시)을 만들려면 전체
   // 건수가 필요한데, 지금까지는 "이번 페이지가 꽉 찼는가"로만 다음 페이지 가능 여부를 판단해서
@@ -88,6 +120,8 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
 // 챗봇 서비스가 죽어있어도 WAS 자신의 데이터는 보여줘야 하므로, 그 부분만 실패로 표시하고
 // 요청 전체를 막지 않는다 (이 프로젝트 전반의 "외부 의존성 장애가 핵심 기능을 막으면 안 된다" 원칙).
 router.get("/summary", requirePermission("audit:view"), asyncHandler(async (req, res) => {
+  logViewOnce(req.session.patientId, "audit_dashboard_viewed", null);
+
   const [rows] = await pool.query(
     "SELECT id, actor_id, action, risk_level, created_at FROM audit_log ORDER BY created_at DESC"
   );
@@ -131,7 +165,7 @@ router.get("/summary", requirePermission("audit:view"), asyncHandler(async (req,
     risk_level_tracks: chatbotSummary
       ? [mysqlAuditTrack, chatbotSummary.risk_level_track]
       : [mysqlAuditTrack],
-    pii_scan_track: chatbotSummary ? chatbotSummary.pii_scan_track : [],
+    pii_scan: chatbotSummary ? chatbotSummary.pii_scan : null,
     static_findings: chatbotSummary ? chatbotSummary.static_findings : [],
     chatbot_error: chatbotError,
   });
