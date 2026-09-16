@@ -311,11 +311,15 @@ function renderStaticFindings(findings) {
 // [2026-09-14] GET /api/audit-log(페이지네이션+risk 필터)는 백엔드에 이미 있었는데 이걸 호출하는
 // 화면이 없어서 "감사 로그 조회" 항목을 curl/DB 직접 조회로만 시연할 수 있었음. limit 상한이
 // 100(auditLog.js)이라 전체를 한 번에 받아 클라이언트에서 자르는 방식(board.js 등과 동일한 패턴)
-// 대신, 서버가 원래 의도한 대로 offset 기반으로 페이지씩 받아온다. 총 건수 API가 없어 번호형
-// 페이지네이션은 못 만들고, 이번 페이지가 PAGE_SIZE만큼 꽉 찼는지로 "다음" 가능 여부만 판단한다.
+// 대신, 서버가 원래 의도한 대로 offset 기반으로 페이지씩 받아온다.
+// [2026-09-16] 처음엔 총 건수 API가 없어 "이번 페이지가 꽉 찼는가"로만 다음 페이지 여부를
+// 판단했는데(이전/다음 한 칸씩만 가능), 백엔드가 COUNT(*)를 같이 내려주도록 바뀌면서 총
+// 페이지 수를 알 수 있게 됐다. 페이지가 많아지면 숫자 버튼이 한없이 늘어나므로 10페이지씩
+// 묶어서 보여주고(PAGE_NUMBERS_PER_GROUP), 그룹을 넘어가는 이동은 이전/다음 버튼으로 한다.
 const AUDIT_HISTORY_PAGE_SIZE = 20;
+const PAGE_NUMBERS_PER_GROUP = 10;
 let auditHistoryOffset = 0;
-let auditHistoryHasNext = false;
+let auditHistoryTotal = 0;
 
 function renderAuditHistoryTable(rows) {
     const tbody = document.getElementById('auditHistoryList');
@@ -352,33 +356,66 @@ function renderAuditHistoryTable(rows) {
         tr.append(timeTd, sevTd, actorTd, actionTd, targetTd, detailTd);
         tbody.appendChild(tr);
     });
+
+    // [2026-09-16] 스크롤 대신 "페이지 하나가 항상 한 화면에 다 보이길" 원해서, 마지막 페이지처럼
+    // 행 수가 PAGE_SIZE보다 적을 때는 빈 행으로 채워 표 높이를 페이지마다 동일하게 만든다 -
+    // 그래야 바로 아래 페이지 번호 버튼이 페이지를 넘겨도 항상 같은 위치에 남는다. (다만 "상세"
+    // 칸 내용이 유난히 길어 줄바꿈되는 행이 있으면 그 행 하나만큼은 여전히 더 높아질 수 있음 -
+    // 행 개수 차이로 인한 흔한 경우만 해결한다.)
+    if (rows.length > 0) {
+        for (let i = rows.length; i < AUDIT_HISTORY_PAGE_SIZE; i++) {
+            const filler = document.createElement('tr');
+            filler.className = 'audit-history-filler-row';
+            const td = document.createElement('td');
+            td.colSpan = 6;
+            td.innerHTML = '&nbsp;';
+            filler.appendChild(td);
+            tbody.appendChild(filler);
+        }
+    }
+}
+
+function goToAuditHistoryPage(pageNumber) {
+    auditHistoryOffset = (pageNumber - 1) * AUDIT_HISTORY_PAGE_SIZE;
+    loadAuditHistory();
 }
 
 function renderAuditHistoryPagination() {
     const container = document.getElementById('auditHistoryPagination');
     container.innerHTML = '';
 
-    function makeButton(label, disabled, onClick) {
+    function makeButton(label, disabled, onClick, isCurrent) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.textContent = label;
         btn.disabled = disabled;
+        if (isCurrent) btn.className = 'pagination__page--active';
         if (!disabled) btn.addEventListener('click', onClick);
         return btn;
     }
 
-    const pageLabel = document.createElement('span');
-    pageLabel.className = 'pagination__page-label';
-    pageLabel.textContent = `페이지 ${Math.floor(auditHistoryOffset / AUDIT_HISTORY_PAGE_SIZE) + 1}`;
+    const totalPages = Math.max(1, Math.ceil(auditHistoryTotal / AUDIT_HISTORY_PAGE_SIZE));
+    const currentPage = Math.floor(auditHistoryOffset / AUDIT_HISTORY_PAGE_SIZE) + 1;
+    const groupStart = Math.floor((currentPage - 1) / PAGE_NUMBERS_PER_GROUP) * PAGE_NUMBERS_PER_GROUP + 1;
+    const groupEnd = Math.min(groupStart + PAGE_NUMBERS_PER_GROUP - 1, totalPages);
 
-    container.appendChild(makeButton('‹ 이전', auditHistoryOffset === 0, () => {
-        auditHistoryOffset = Math.max(0, auditHistoryOffset - AUDIT_HISTORY_PAGE_SIZE);
-        loadAuditHistory();
+    // 한 칸씩 이전/다음 이동은 그대로 유지 - 숫자 버튼과 별개로 항상 존재.
+    container.appendChild(makeButton('‹ 이전', currentPage === 1, () => {
+        goToAuditHistoryPage(currentPage - 1);
     }));
-    container.appendChild(pageLabel);
-    container.appendChild(makeButton('다음 ›', !auditHistoryHasNext, () => {
-        auditHistoryOffset += AUDIT_HISTORY_PAGE_SIZE;
-        loadAuditHistory();
+
+    if (groupStart > 1) {
+        container.appendChild(makeButton('…', false, () => goToAuditHistoryPage(groupStart - 1)));
+    }
+    for (let page = groupStart; page <= groupEnd; page++) {
+        container.appendChild(makeButton(String(page), page === currentPage, () => goToAuditHistoryPage(page), page === currentPage));
+    }
+    if (groupEnd < totalPages) {
+        container.appendChild(makeButton('…', false, () => goToAuditHistoryPage(groupEnd + 1)));
+    }
+
+    container.appendChild(makeButton('다음 ›', currentPage === totalPages, () => {
+        goToAuditHistoryPage(currentPage + 1);
     }));
 }
 
@@ -401,9 +438,9 @@ async function loadAuditHistory() {
         showToast('감사 로그 이력을 불러오지 못했습니다.');
         return;
     }
-    const rows = await res.json();
-    auditHistoryHasNext = rows.length === AUDIT_HISTORY_PAGE_SIZE;
-    renderAuditHistoryTable(rows);
+    const data = await res.json();
+    auditHistoryTotal = data.total;
+    renderAuditHistoryTable(data.rows);
     renderAuditHistoryPagination();
 }
 

@@ -58,15 +58,28 @@ router.get("/", requirePermission("audit:view"), asyncHandler(async (req, res) =
   }
   const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const [rows] = await pool.query(
-    `SELECT al.id, al.actor_id, p.username AS actor_username, al.action, al.target_type, al.target_id, al.detail, al.risk_level, al.created_at
-     FROM audit_log al LEFT JOIN patients p ON p.id = al.actor_id
-     ${whereClause}
-     ORDER BY al.created_at DESC
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
-  );
-  res.json(rows.map((r) => ({ ...r, category: classifyCategory(r.action) })));
+  // [2026-09-16] 프론트에서 숫자 페이지 버튼(예: 1~10페이지 한 번에 표시)을 만들려면 전체
+  // 건수가 필요한데, 지금까지는 "이번 페이지가 꽉 찼는가"로만 다음 페이지 가능 여부를 판단해서
+  // (이전/다음 이동만 가능) 총 페이지 수를 알 수 없었다. COUNT(*)를 같은 WHERE 조건으로
+  // 병렬 조회해 total을 함께 내려준다.
+  const [[rows], [countRows]] = await Promise.all([
+    pool.query(
+      `SELECT al.id, al.actor_id, p.username AS actor_username, al.action, al.target_type, al.target_id, al.detail, al.risk_level, al.created_at
+       FROM audit_log al LEFT JOIN patients p ON p.id = al.actor_id
+       ${whereClause}
+       ORDER BY al.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS total FROM audit_log al ${whereClause}`,
+      params
+    ),
+  ]);
+  res.json({
+    rows: rows.map((r) => ({ ...r, category: classifyCategory(r.action) })),
+    total: countRows[0].total,
+  });
 }));
 
 // [체크리스트 7번 - 대시보드 2단계] mysql_audit(WAS 자신의 DB)은 여기서 직접 조회하고,
