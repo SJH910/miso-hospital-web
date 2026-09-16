@@ -374,6 +374,24 @@ const PAGE_NUMBERS_PER_GROUP = 10;
 let auditHistoryOffset = 0;
 let auditHistoryTotal = 0;
 
+// [2026-09-16] "차단" 버튼이 이미 차단된 IP에도 똑같이 떠서, 이 사건에 대해 이미 조치했는지
+// 표에서 바로 알 수 없었음 - 매번 관리 페이지로 가봐야 확인 가능했음. 현재 차단 목록을
+// 캐시해두고, IP 컬럼을 그릴 때 대조해서 "이미 차단됨"이면 버튼 색/문구를 다르게 보여준다.
+// GET /api/ip-blocklist는 security:manage 권한이 필요한데, 이 페이지는 audit:view 기준이라
+// (보통 admin은 둘 다 있지만) 혹시 없어도 감사 로그 조회 자체는 계속되게 실패를 삼킨다.
+let blockedIpMap = new Map(); // ip -> { id, expires_at, reason }
+
+async function loadIpBlocklistStatus() {
+    try {
+        const res = await fetch(`${WAS_BASE}/api/ip-blocklist`, { credentials: 'include' });
+        if (!res.ok) return;
+        const blocks = await res.json();
+        blockedIpMap = new Map(blocks.map((b) => [b.ip, b]));
+    } catch (err) {
+        console.error('[ip blocklist status] 조회 실패', err.message);
+    }
+}
+
 function renderAuditHistoryTable(rows) {
     const tbody = document.getElementById('auditHistoryList');
     const emptyState = document.getElementById('auditHistoryEmpty');
@@ -421,15 +439,29 @@ function renderAuditHistoryTable(rows) {
             const ipText = document.createElement('span');
             ipText.textContent = ip;
 
+            // [2026-09-16] 이미 차단된 IP도 항상 같은 빨간 "차단" 버튼이 떠서, 이 사건에 대해
+            // 조치를 했는지 표만 보고는 알 수 없었음 - blockedIpMap과 대조해서 이미 차단된
+            // 경우엔 버튼을 초록(.btn-action--confirm, "이미 처리됨" 톤)으로 바꾸고 문구도
+            // "차단됨"으로 바꾼다. 클릭하면(연장/해제 등 추가 조치를 위해) 관리 페이지로는
+            // 그대로 이동 가능하게 둔다.
+            const blockInfo = blockedIpMap.get(ip);
             const blockButton = document.createElement('button');
             blockButton.type = 'button';
-            blockButton.className = 'btn-action btn-action--cancel';
             blockButton.style.width = 'auto';
             blockButton.style.padding = '1px 8px';
             blockButton.style.fontSize = '11px';
             blockButton.style.whiteSpace = 'nowrap';
             blockButton.style.marginLeft = '6px';
-            blockButton.textContent = '차단';
+            if (blockInfo) {
+                blockButton.className = 'btn-action btn-action--confirm';
+                blockButton.textContent = '차단됨';
+                blockButton.title = blockInfo.expires_at
+                    ? `${formatDateTime(blockInfo.expires_at)}까지 차단`
+                    : '영구 차단';
+            } else {
+                blockButton.className = 'btn-action btn-action--cancel';
+                blockButton.textContent = '차단';
+            }
             blockButton.addEventListener('click', () => {
                 window.location.href = `admin-ip-blocklist.html?ip=${encodeURIComponent(ip)}`;
             });
@@ -550,7 +582,12 @@ async function loadAuditHistory() {
     if (from) params.set('from', from);
     if (to) params.set('to', to);
 
-    const res = await fetch(`${WAS_BASE}/api/audit-log?${params}`, { credentials: 'include' });
+    // 표를 그리기 전에 최신 차단 목록부터 받아둬야 IP 컬럼의 "차단"/"차단됨" 표시가 그 시점
+    // 기준으로 정확하다 - 병렬로 같이 받는다(둘은 서로 무관한 조회라 순서 상관없음).
+    const [res] = await Promise.all([
+        fetch(`${WAS_BASE}/api/audit-log?${params}`, { credentials: 'include' }),
+        loadIpBlocklistStatus(),
+    ]);
     if (!res.ok) {
         showToast('감사 로그 이력을 불러오지 못했습니다.');
         return;
