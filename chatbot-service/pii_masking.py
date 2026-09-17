@@ -1,6 +1,7 @@
 import re
 import math
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -219,14 +220,43 @@ def mask_secrets(text: str) -> str:
     return masked_text
 
 
-def mask_pii(text: str) -> str:
+def _mask_korean_name_by_length(name: str) -> str:
+    # 기존 name_pattern1/NER 블록과 동일한 길이별 마스킹 규칙(첫 글자+*...+마지막 글자 유지).
+    # 로직을 공유하지 않고 별도 함수로 둔 이유: 기존 두 블록(성씨 화이트리스트 트리거 기반,
+    # spaCy NER 기반)은 실명 인증 기능과 무관하므로 수정 없이 그대로 두기 위함
+    # (IDENTITY_VERIFICATION_WORKFLOW.md 6번 - "기존 로직 삭제/수정 금지" 원칙).
+    length = len(name)
+    if length == 1:
+        return '*'
+    if length == 2:
+        return name[0] + '*'
+    if length == 3:
+        return name[0] + '*' + name[2]
+    return name[0] + '*' * (length - 2) + name[-1]
+
+
+def mask_pii(text: str, own_name: Optional[str] = None) -> str:
     """
     사용자 입력 텍스트에서 PII(개인정보)를 탐지하고 마스킹 처리합니다.
+
+    own_name: [실명 인증 연계, 2026-09-16] 로그인한 환자의 DB 등록 이름(app.py가
+    tools_db.get_patient_name(patient_id)로 조회해 전달 - 이 함수 자체는 DB에 접근하지
+    않는다). 주어지면 트리거 단어("저는" 등) 없이도 텍스트에 그 이름이 그대로 나올 때마다
+    최우선으로 마스킹한다 - 등록된 본인 이름이라는 게 이미 확정된 정보라 트리거가 없어도
+    안전하게 마스킹할 수 있다. None이거나 텍스트에 없으면 아래 기존 로직(성씨 화이트리스트
+    트리거 기반 + spaCy NER)이 지금까지와 동일하게 그대로 동작한다(IDENTITY_VERIFICATION_
+    WORKFLOW.md 6번 참고 - 기존 24개 회귀 테스트가 이 폴백 경로를 보증한다).
     """
     if not text:
         return text
 
     masked_text = text
+
+    # -1. 본인 등록 이름 우선 마스킹 (기존 로직보다 먼저 실행 - 이후 로직은 이미 마스킹된
+    # '*' 포함 부분을 건드리지 않도록 되어 있어 순서를 지켜야 함).
+    if own_name:
+        masked_own_name = _mask_korean_name_by_length(own_name)
+        masked_text = masked_text.replace(own_name, masked_own_name)
 
     # 0. 내부 URL / 사설 IP / API 키 (다른 숫자 기반 패턴보다 반드시 먼저 실행)
     masked_text = mask_secrets(masked_text)
