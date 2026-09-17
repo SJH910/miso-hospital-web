@@ -19,6 +19,11 @@ DB_NAME = os.getenv("DB_NAME", "vulnapp")
 # reservations.js의 VALID_STATUSES와 반드시 일치해야 함
 STATUS_LABELS = {"requested": "예약 요청됨", "confirmed": "예약 확정", "cancelled": "예약 취소"}
 
+# [보안 수정 2026-09-16] was/routes/reservations.js:65의 MAX_RESERVATIONS_PER_SLOT과
+# 반드시 같은 값으로 유지할 것 - 이 값이 없어서 챗봇 경로로는 이미 마감된 시간대에도
+# 예약이 들어가는 버그가 실제로 재현됐다(RESERVATION_FLOW_WORKFLOW.md 참고).
+MAX_RESERVATIONS_PER_SLOT = 2
+
 
 def get_connection():
     return pymysql.connect(
@@ -71,6 +76,19 @@ def book_appointment(patient_id: int, date_str: str, department: str) -> str:
     try:
         conn = get_connection()
         with conn.cursor() as cursor:
+            # reservations.js:83과 동일한 조건(취소된 예약은 정원에서 제외) - 조건이 어긋나면
+            # 같은 시간대인데 한쪽은 되고 한쪽은 안 되는 불일치가 생긴다.
+            cursor.execute(
+                "SELECT COUNT(*) AS count FROM reservations WHERE reserved_at = %s AND status != 'cancelled'",
+                (reserved_at,),
+            )
+            row = cursor.fetchone()
+            current_count = row["count"] if row else 0
+
+            if current_count >= MAX_RESERVATIONS_PER_SLOT:
+                conn.close()
+                return f"죄송합니다, {date_str} 시간대는 이미 예약 정원이 마감되었습니다. 다른 시간을 선택해주세요."
+
             cursor.execute(
                 "INSERT INTO reservations (patient_id, department, reserved_at) VALUES (%s, %s, %s)",
                 (patient_id, department, reserved_at),
@@ -85,6 +103,22 @@ def book_appointment(patient_id: int, date_str: str, department: str) -> str:
                 conn.close()
             except Exception:
                 pass
+
+
+def get_patient_name(patient_id: int) -> "str | None":
+    """[실명 인증 연계] pii_masking.py가 '본인 등록 이름'을 우선 마스킹하기 위해 조회한다
+    (IDENTITY_VERIFICATION_WORKFLOW.md 참고). patient_id가 없거나 조회 실패 시 None -
+    호출부(app.py)가 own_name=None으로 mask_pii를 호출하면 기존 로직(화이트리스트+NER)으로
+    그대로 폴백되므로 안전하다."""
+    if not patient_id:
+        return None
+
+    conn = get_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT name FROM patients WHERE id = %s", (patient_id,))
+        row = cursor.fetchone()
+    conn.close()
+    return row["name"] if row else None
 
 
 def check_appointments(patient_id: int) -> str:

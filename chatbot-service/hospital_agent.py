@@ -163,12 +163,20 @@ def is_within_business_hours(dt: datetime) -> bool:
 
 
 @audit_log("book_appointment")
-def tool_book_appointment(question: str, patient_id: Optional[int]) -> str:
+def tool_book_appointment(question: str, patient_id: Optional[int]) -> tuple[str, Optional[dict]]:
+    """자유 텍스트에서 진료과/일시를 파싱만 하고, 곧바로 DB에 쓰지 않는다.
+    [보안 수정 2026-09-16] 정규식 파싱 오탐이 그대로 예약으로 이어지는 걸 막기 위해
+    확인 단계를 거치게 함(RESERVATION_FLOW_WORKFLOW.md 옵션 A). 반환값 두 번째 요소
+    (pending)는 파싱이 유효할 때만 dict로 채워지며, WAS가 이 값을 세션에 보관했다가
+    사용자가 확인(버튼)했을 때만 confirm_book_appointment()에 그대로 넘긴다 - 클라이언트가
+    department/date_str을 직접 다시 보내는 구조가 아니므로 왕복 중 변조 여지가 없다
+    (was/routes/chat.js의 /confirm-reservation 라우트 참고)."""
     department = find_department(question)
     if not department:
         return (
             "예약을 도와드리려면 진료과 정보가 필요합니다. "
-            "예: '9월 10일 오후 2시에 내과 예약해줘'처럼 말씀해주세요."
+            "예: '9월 10일 오후 2시에 내과 예약해줘'처럼 말씀해주세요.",
+            None,
         )
 
     parsed_dt = parse_datetime_kr(question)
@@ -176,8 +184,41 @@ def tool_book_appointment(question: str, patient_id: Optional[int]) -> str:
         return (
             "예약 날짜와 시간을 이해하지 못했습니다. "
             "'9월 10일 오후 2시', '내일 14시', '2026-09-10 14:00'처럼 "
-            "날짜와 시간을 함께 말씀해주세요."
+            "날짜와 시간을 함께 말씀해주세요.",
+            None,
         )
+
+    if not is_within_business_hours(parsed_dt):
+        requested = parsed_dt.strftime("%Y-%m-%d %H:%M")
+        return (
+            f"요청하신 {requested}은(는) 병원 운영시간이 아닙니다. "
+            f"{BUSINESS_HOURS_NOTICE} 운영시간 내로 다시 말씀해주세요.",
+            None,
+        )
+
+    date_str = parsed_dt.strftime("%Y-%m-%d %H:%M:%S")
+    requested_display = parsed_dt.strftime("%Y-%m-%d %H:%M")
+    confirm_message = (
+        f"{department} / {requested_display}로 예약할까요? 맞으면 '예'를 눌러주세요."
+    )
+    return (confirm_message, {"department": department, "date_str": date_str})
+
+
+@audit_log("confirm_book_appointment")
+def confirm_book_appointment(department: str, date_str: str, patient_id: Optional[int]) -> str:
+    """tool_book_appointment가 반환한 pending 정보를 사용자가 확인(버튼 클릭)한 뒤에만
+    호출된다(app.py의 confirm_pending_reservation 분기가 run_agent를 거치지 않고 직접
+    호출함). 설계상 department/date_str은 WAS 세션에 서버가 직접 저장해둔 값(클라이언트
+    왕복 없음)이지만, 방어 심층화 차원에서 department가 find_department()가 인식하는
+    형태(화이트리스트 또는 'OO과' 패턴)를 벗어나지 않는지 한 번 더 확인한다. 운영시간도
+    확인 메시지를 보여준 시점과 실제 확인 시점 사이에 시간이 지날 수 있으므로 재검증한다."""
+    if not department or not find_department(department):
+        return "예약 확인 중 오류가 발생했습니다. 다시 예약을 요청해주세요."
+
+    try:
+        parsed_dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return "예약 확인 중 오류가 발생했습니다. 다시 예약을 요청해주세요."
 
     if not is_within_business_hours(parsed_dt):
         requested = parsed_dt.strftime("%Y-%m-%d %H:%M")
@@ -186,7 +227,6 @@ def tool_book_appointment(question: str, patient_id: Optional[int]) -> str:
             f"{BUSINESS_HOURS_NOTICE} 운영시간 내로 다시 말씀해주세요."
         )
 
-    date_str = parsed_dt.strftime("%Y-%m-%d %H:%M:%S")
     return tools_db.book_appointment(patient_id, date_str, department)
 
 @audit_log("check_appointments")
@@ -225,23 +265,29 @@ def choose_action(question: str) -> tuple[str, str]:
 
     return ("일반적인 질문이거나 확인되지 않은 질문이므로 일반 답변을 사용", "direct")
 
-def run_agent(question: str, patient_id: Optional[int] = None) -> str:
+def run_agent(question: str, patient_id: Optional[int] = None) -> tuple[str, Optional[dict]]:
     """patient_id: 로그인한 환자의 id. WAS(Node)가 세션에서 꺼내 넘겨주며, 클라이언트가
     임의로 바꿀 수 없는 값이다 (IDOR 방지 - chat.js 참고). 예약/기록 조회 도구는 이 값이
-    없으면(비로그인) 동작을 거부한다."""
+    없으면(비로그인) 동작을 거부한다.
+
+    [보안 수정 2026-09-16] book_appointment 분기(tool_book_appointment)만 실제로
+    (메시지, pending dict|None) 튜플을 반환하므로(확인 단계 도입, RESERVATION_FLOW_
+    WORKFLOW.md 옵션 A), 다른 모든 분기도 반환 타입을 tuple[str, Optional[dict]]로
+    통일한다 - 호출부(app.py chat_endpoint)가 분기마다 다르게 언패킹하지 않아도 되게.
+    pending은 book_appointment 외 분기에서는 항상 None이다."""
     reason, action_key = choose_action(question)
 
     if action_key == "book_appointment":
         return tool_book_appointment(question, patient_id)
     if action_key == "check_appointments":
-        return tool_check_appointments(patient_id)
+        return tool_check_appointments(patient_id), None
     if action_key == "check_medical_records":
-        return tool_check_medical_records(patient_id)
+        return tool_check_medical_records(patient_id), None
     if action_key == "check_scanned_documents":
-        return tool_check_scanned_documents(patient_id)
+        return tool_check_scanned_documents(patient_id), None
     if action_key == "rag":
-        return tool_rag(question)
-    return tool_direct_answer(question)
+        return tool_rag(question), None
+    return tool_direct_answer(question), None
 
 if __name__ == "__main__":
     test_q = "배가 아프고 토할 것 같은데 어디로 가야하나요?"

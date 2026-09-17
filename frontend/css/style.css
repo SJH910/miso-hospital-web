@@ -1025,6 +1025,22 @@ body.landing-page {
 .chat-bubble--patient { align-self: flex-end; background-color: #3498db; color: #fff; }
 .chat-bubble--bot { align-self: flex-start; background-color: #ecf0f1; color: #2c3e50; }
 
+/* [신규 2026-09-16] 예약 확인 단계(RESERVATION_FLOW_WORKFLOW.md 옵션 A) - 봇 말풍선 아래
+   예/아니오 버튼. 챗봇 팝업(chat-widget.js)과 예약 상담 전체화면(reservation.js)이 공유한다. */
+.chat-confirm-buttons { align-self: flex-start; display: flex; gap: 8px; }
+.chat-confirm-buttons__yes,
+.chat-confirm-buttons__no {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid #3498db;
+}
+.chat-confirm-buttons__yes { background-color: #3498db; color: #fff; }
+.chat-confirm-buttons__no { background-color: #fff; color: #3498db; }
+.chat-confirm-buttons__yes:disabled,
+.chat-confirm-buttons__no:disabled { opacity: 0.5; cursor: default; }
+
 .chat-panel__form {
     display: flex;
     gap: 6px;

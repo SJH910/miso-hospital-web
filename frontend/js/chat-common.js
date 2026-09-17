@@ -42,6 +42,11 @@ async function fetchChatHistory() {
     return res.json();
 }
 
+// [보안 수정 2026-09-16] 예약 확인 단계(RESERVATION_FLOW_WORKFLOW.md 옵션 A) 도입 전에는
+// answer 문자열만 필요했지만, 이제 "확인이 필요한 예약 제안인지"(needsConfirmation)도
+// 같이 알아야 버튼을 띄울지 판단할 수 있어 응답 객체 전체를 반환하도록 바꿨다.
+// 이 함수를 쓰는 chat-widget.js/reservation.js 둘 다 { answer, needsConfirmation } 구조
+// 분해로 이미 맞춰뒀다.
 async function sendChatMessage(message) {
     const res = await fetch(`${WAS_BASE}/api/chat`, {
         method: 'POST',
@@ -56,6 +61,76 @@ async function sendChatMessage(message) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message || '메시지 전송에 실패했습니다.');
     }
+    return res.json(); // { answer, needsConfirmation }
+}
+
+// [보안 수정 2026-09-16] 둘 다 예약 department/date_str 같은 내용을 body에 담지 않는다 -
+// WAS가 세션(req.session.pendingReservation)에 보관해둔 값만 사용하므로, 이 호출들은
+// "확인/취소한다"는 의사만 전달할 뿐 예약 내용 자체를 조작할 방법이 없다.
+async function confirmReservation() {
+    const res = await fetch(`${WAS_BASE}/api/chat/confirm-reservation`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
+        credentials: 'include',
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || '예약 확인에 실패했습니다.');
+    }
     const data = await res.json();
     return data.answer;
+}
+
+async function cancelReservation() {
+    const res = await fetch(`${WAS_BASE}/api/chat/cancel-reservation`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': getCsrfToken() },
+        credentials: 'include',
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || '예약 취소 처리에 실패했습니다.');
+    }
+    const data = await res.json();
+    return data.answer;
+}
+
+// 봇 말풍선 아래에 예/아니오 버튼을 붙인다. onConfirm/onCancel은 각각 confirmReservation/
+// cancelReservation을 호출하고 결과 말풍선까지 그리는 콜백 - 클릭 즉시 두 버튼을 비활성화해
+// 중복 클릭으로 확인 요청이 여러 번 나가는 것을 막는다(서버 쪽도 세션 삭제로 이중 방어됨).
+function renderReservationConfirmButtons(container, onConfirm, onCancel) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chat-confirm-buttons';
+
+    const yesBtn = document.createElement('button');
+    yesBtn.type = 'button';
+    yesBtn.textContent = '예, 예약할게요';
+    yesBtn.className = 'chat-confirm-buttons__yes';
+
+    const noBtn = document.createElement('button');
+    noBtn.type = 'button';
+    noBtn.textContent = '아니요';
+    noBtn.className = 'chat-confirm-buttons__no';
+
+    const disableBoth = () => {
+        yesBtn.disabled = true;
+        noBtn.disabled = true;
+    };
+
+    yesBtn.addEventListener('click', async () => {
+        disableBoth();
+        await onConfirm();
+        wrapper.remove();
+    });
+    noBtn.addEventListener('click', async () => {
+        disableBoth();
+        await onCancel();
+        wrapper.remove();
+    });
+
+    wrapper.appendChild(yesBtn);
+    wrapper.appendChild(noBtn);
+    container.appendChild(wrapper);
+    container.scrollTop = container.scrollHeight;
+    return wrapper;
 }

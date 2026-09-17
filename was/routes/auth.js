@@ -3,11 +3,44 @@ const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
 const pool = require("../db");
+const config = require("../config");
 const { encryptRrn } = require("../crypto-utils");
 const { logAudit } = require("../audit");
 const { verifyTotpCode } = require("../totp-utils");
 
 const router = express.Router();
+
+// [실명 인증 - 모의 PASS, 2026-09-16] 강사님 피드백 반영 - 회원가입이 이름/주민번호를 그대로
+// 텍스트로만 받아 "김치볶음밥" 같은 가짜 이름으로도 가입되던 문제(IDENTITY_VERIFICATION_
+// WORKFLOW.md 참고). chatbot-service의 human.csv(사전 등록된 실제 인물 명단)와 대조하는
+// POST /internal/verify-identity를 호출한다 - /chat과 동일하게 X-Internal-Auth로 인증.
+//
+// [fail-closed 설계] chatbot-service가 응답하지 않거나 에러가 나면 false(가입 거부)로
+// 처리한다. 이 기능 자체가 "가짜 이름 가입을 막는 보안 통제"인데 장애 시 fail-open으로
+// 두면 장애 상황에서 바로 그 통제가 무력화돼 기능의 존재 의미가 없어진다. 반대로
+// fail-closed의 비용은 "일시적으로 신규가입만 막힘"(로그인 등 기존 기능엔 영향 없음)이라
+// 훨씬 감당 가능하다.
+//
+// req/res(Express)와 분리된 순수 판정 함수라 fetch만 목(mock)하면 바로 단위테스트할 수
+// 있다 - discord-notify.js의 shouldSend()와 같은 이유(test-signup-identity-verification.js 참고).
+async function isRegisteredPerson(name, rrn) {
+  try {
+    const res = await fetch(`${config.chatbotServiceUrl}/internal/verify-identity`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth": config.chatbotServiceKey,
+      },
+      body: JSON.stringify({ name, rrn }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.verified === true;
+  } catch (err) {
+    console.error("[signup] 실명 인증 호출 실패 - fail-closed로 가입을 거부합니다:", err.message);
+    return false;
+  }
+}
 
 // [위치 탐지용] geoip-lite는 인터넷 호출 없이 로컬에 내장된 DB로 IP->국가/지역을 추정하는
 // 패키지다. 외부 API를 쓰면 "그 서비스가 죽으면 로그인 자체가 막힌다"는 문제가 생기므로
@@ -318,6 +351,11 @@ router.post("/signup", async (req, res) => {
     return res.status(400).json({ success: false, message: "모든 항목을 입력해주세요." });
   }
 
+  // [실명 인증] 계정 생성 전에 실제 등록된 사람인지 먼저 확인 - 위 isRegisteredPerson() 참고.
+  if (!(await isRegisteredPerson(name, rrn))) {
+    return res.status(400).json({ success: false, message: "등록되지 않은 인적사항입니다." });
+  }
+
   try {
     const [existing] = await pool.query(
       "SELECT id FROM patients WHERE username = ?",
@@ -377,3 +415,4 @@ router.post("/logout", (req, res) => {
 router.isNewAdminLocation = isNewAdminLocation;
 
 module.exports = router;
+module.exports.isRegisteredPerson = isRegisteredPerson;

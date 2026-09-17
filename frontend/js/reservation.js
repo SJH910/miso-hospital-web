@@ -31,8 +31,27 @@ document.getElementById('chatForm').addEventListener('submit', async (e) => {
     input.value = '';
 
     try {
-        const answer = await sendChatMessage(message);
+        const { answer, needsConfirmation } = await sendChatMessage(message);
         renderChatBubble(chatMessages, 'bot', answer);
+        if (needsConfirmation) {
+            renderReservationConfirmButtons(
+                chatMessages,
+                async () => {
+                    try {
+                        renderChatBubble(chatMessages, 'bot', await confirmReservation());
+                    } catch (err) {
+                        renderChatBubble(chatMessages, 'bot', err.message);
+                    }
+                },
+                async () => {
+                    try {
+                        renderChatBubble(chatMessages, 'bot', await cancelReservation());
+                    } catch (err) {
+                        renderChatBubble(chatMessages, 'bot', err.message);
+                    }
+                }
+            );
+        }
     } catch (err) {
         renderChatBubble(chatMessages, 'bot', err.message);
     }
