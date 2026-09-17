@@ -119,11 +119,13 @@ function renderReservationConfirmButtons(container, onConfirm, onCancel) {
 
     yesBtn.addEventListener('click', async () => {
         disableBoth();
+        renderChatBubble(container, 'patient', yesBtn.textContent);
         await onConfirm();
         wrapper.remove();
     });
     noBtn.addEventListener('click', async () => {
         disableBoth();
+        renderChatBubble(container, 'patient', noBtn.textContent);
         await onCancel();
         wrapper.remove();
     });

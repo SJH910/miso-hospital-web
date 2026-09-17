@@ -113,12 +113,24 @@ def get_patient_name(patient_id: int) -> "str | None":
     if not patient_id:
         return None
 
-    conn = get_connection()
-    with conn.cursor() as cursor:
-        cursor.execute("SELECT name FROM patients WHERE id = %s", (patient_id,))
-        row = cursor.fetchone()
-    conn.close()
-    return row["name"] if row else None
+    # [버그 수정 2026-09-17] 이 파일의 다른 함수들과 동일한 이유로 conn.close()를 finally로
+    # 옮김 - cursor.execute()/fetchone()에서 예외가 나면(DB 재시작, 인증 실패 등) 연결이
+    # 안 닫힌 채 새고 있었음. get_patient_name()은 예약 관련 메시지뿐 아니라 모든 챗봇
+    # 메시지마다 호출되므로(app.py), DB 장애가 지속되는 동안 요청마다 연결이 하나씩 새서
+    # MySQL max_connections에 다가갈 수 있었다(WAS도 같은 MySQL 인스턴스를 공유).
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT name FROM patients WHERE id = %s", (patient_id,))
+            row = cursor.fetchone()
+        return row["name"] if row else None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def check_appointments(patient_id: int) -> str:
